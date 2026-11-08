@@ -1,0 +1,4562 @@
+{
+  "generated_at": "2026-11-07T08:58:06.799Z",
+  "source": {
+    "dump": "dump.cs",
+    "tags": "tags.jsonl",
+    "opcodes": "opcodes.jsonl"
+  },
+  "opcodes": {
+    "0x7000864f": {
+      "class": "Cmd_Role_GetClientInfo_SC",
+      "fields": [
+        {
+          "tag": 0,
+          "name": "iId",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x10",
+          "inferred": true
+        },
+        {
+          "tag": 1,
+          "name": "sMessage",
+          "type": {
+            "kind": "string"
+          },
+          "offset": "0x18",
+          "inferred": true
+        },
+        {
+          "tag": 2,
+          "name": "iVer",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x20",
+          "inferred": true
+        },
+        {
+          "tag": 3,
+          "name": "sMd5",
+          "type": {
+            "kind": "string"
+          },
+          "offset": "0x28",
+          "inferred": true
+        }
+      ]
+    },
+    "0x7000844f": {
+      "class": "Cmd_Role_SetClientInfo_SC",
+      "fields": [
+        {
+          "tag": 0,
+          "name": "iId",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x10",
+          "inferred": true
+        },
+        {
+          "tag": 1,
+          "name": "sMessage",
+          "type": {
+            "kind": "string"
+          },
+          "offset": "0x18",
+          "inferred": true
+        },
+        {
+          "tag": 2,
+          "name": "iVer",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x20",
+          "inferred": true
+        }
+      ]
+    },
+    "0x7000c8ea": {
+      "class": "Cmd_Act_GetListByStage_SC",
+      "fields": [
+        {
+          "tag": 0,
+          "name": "iStageId",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x10",
+          "inferred": true
+        },
+        {
+          "tag": 1,
+          "name": "vActivity",
+          "type": {
+            "kind": "list",
+            "of": {
+              "kind": "struct",
+              "class": "CmdActivityData"
+            }
+          },
+          "offset": "0x18",
+          "inferred": true
+        },
+        {
+          "tag": 2,
+          "name": "iLastLanguageId",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x20",
+          "inferred": true
+        },
+        {
+          "tag": 3,
+          "name": "mActivitySpecialData",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "int"
+            },
+            "value": {
+              "kind": "struct",
+              "class": "CmdActivitySpecialData"
+            }
+          },
+          "offset": "0x28",
+          "inferred": true
+        },
+        {
+          "tag": 4,
+          "name": "iClientActivityVersion",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x30",
+          "inferred": true
+        },
+        {
+          "tag": 5,
+          "name": "vBriefActivity",
+          "type": {
+            "kind": "list",
+            "of": {
+              "kind": "struct",
+              "class": "CmdActivityBriefData"
+            }
+          },
+          "offset": "0x38",
+          "inferred": true
+        },
+        {
+          "tag": 6,
+          "name": "vBriefActivityIdList",
+          "type": {
+            "kind": "list",
+            "of": {
+              "kind": "int"
+            }
+          },
+          "offset": "0x40",
+          "inferred": true
+        },
+        {
+          "tag": 7,
+          "name": "vActivityDiffData",
+          "type": {
+            "kind": "list",
+            "of": {
+              "kind": "struct",
+              "class": "CmdActivityDiffData"
+            }
+          },
+          "offset": "0x48",
+          "inferred": true
+        },
+        {
+          "tag": 8,
+          "name": "iPageCur",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x50",
+          "inferred": true
+        },
+        {
+          "tag": 9,
+          "name": "iPageMax",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x54",
+          "inferred": true
+        },
+        {
+          "tag": 10,
+          "name": "sMd5PageCur",
+          "type": {
+            "kind": "string"
+          },
+          "offset": "0x58",
+          "inferred": true
+        }
+      ]
+    },
+    "0x70009057": {
+      "class": "Cmd_Friend_GetFriendList_SC",
+      "fields": [
+        {
+          "tag": 0,
+          "name": "vecFriends",
+          "type": {
+            "kind": "list",
+            "of": {
+              "kind": "struct",
+              "class": "FriendBaseInfo"
+            }
+          },
+          "offset": "0x10",
+          "inferred": true
+        },
+        {
+          "tag": 1,
+          "name": "vecBlacks",
+          "type": {
+            "kind": "list",
+            "of": {
+              "kind": "struct",
+              "class": "FriendBaseInfo"
+            }
+          },
+          "offset": "0x18",
+          "inferred": true
+        },
+        {
+          "tag": 2,
+          "name": "vecRequests",
+          "type": {
+            "kind": "list",
+            "of": {
+              "kind": "struct",
+              "class": "FriendBaseInfo"
+            }
+          },
+          "offset": "0x20",
+          "inferred": true
+        },
+        {
+          "tag": 3,
+          "name": "uiTime",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x28",
+          "inferred": true
+        },
+        {
+          "tag": 4,
+          "name": "uiMaxCount",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x2c",
+          "inferred": true
+        },
+        {
+          "tag": 5,
+          "name": "vecFBBlacks",
+          "type": {
+            "kind": "list",
+            "of": {
+              "kind": "string"
+            }
+          },
+          "offset": "0x30",
+          "inferred": true
+        },
+        {
+          "tag": 6,
+          "name": "vMarks",
+          "type": {
+            "kind": "list",
+            "of": {
+              "kind": "struct",
+              "class": "FriendMark"
+            }
+          },
+          "offset": "0x38",
+          "inferred": true
+        },
+        {
+          "tag": 7,
+          "name": "uiFansNum",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x40",
+          "inferred": true
+        },
+        {
+          "tag": 8,
+          "name": "uiMaxExtraCount",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x44",
+          "inferred": true
+        },
+        {
+          "tag": 9,
+          "name": "iSeqId",
+          "type": {
+            "kind": "int64"
+          },
+          "offset": "0x48",
+          "inferred": true
+        },
+        {
+          "tag": 10,
+          "name": "vecFocuslist",
+          "type": {
+            "kind": "list",
+            "of": {
+              "kind": "struct",
+              "class": "FriendBaseInfo"
+            }
+          },
+          "offset": "0x50",
+          "inferred": true
+        },
+        {
+          "tag": 11,
+          "name": "mFriendBaseInfo",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "struct",
+              "class": "CmdRoleKey"
+            },
+            "value": {
+              "kind": "struct",
+              "class": "FriendBaseInfo"
+            }
+          },
+          "offset": "0x58",
+          "inferred": true
+        },
+        {
+          "tag": 12,
+          "name": "vFriendList",
+          "type": {
+            "kind": "list",
+            "of": {
+              "kind": "struct",
+              "class": "CmdRoleKey"
+            }
+          },
+          "offset": "0x60",
+          "inferred": true
+        },
+        {
+          "tag": 13,
+          "name": "vFBFriendList",
+          "type": {
+            "kind": "list",
+            "of": {
+              "kind": "struct",
+              "class": "CmdRoleKey"
+            }
+          },
+          "offset": "0x68",
+          "inferred": true
+        },
+        {
+          "tag": 14,
+          "name": "vVKFriendList",
+          "type": {
+            "kind": "list",
+            "of": {
+              "kind": "struct",
+              "class": "CmdRoleKey"
+            }
+          },
+          "offset": "0x70",
+          "inferred": true
+        },
+        {
+          "tag": 15,
+          "name": "vFocusList",
+          "type": {
+            "kind": "list",
+            "of": {
+              "kind": "struct",
+              "class": "CmdRoleKey"
+            }
+          },
+          "offset": "0x78",
+          "inferred": true
+        },
+        {
+          "tag": 16,
+          "name": "mFriendExtraInfo",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "struct",
+              "class": "CmdRoleKey"
+            },
+            "value": {
+              "kind": "struct",
+              "class": "FriendExtraInfo"
+            }
+          },
+          "offset": "0x80",
+          "inferred": true
+        },
+        {
+          "tag": 17,
+          "name": "iGameFBNum",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x88",
+          "inferred": true
+        },
+        {
+          "tag": 18,
+          "name": "iSyncFBTimes",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x8c",
+          "inferred": true
+        },
+        {
+          "tag": 19,
+          "name": "mFriendFBExtraInfo",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "struct",
+              "class": "CmdRoleKey"
+            },
+            "value": {
+              "kind": "struct",
+              "class": "FriendFBExtraInfo"
+            }
+          },
+          "offset": "0x90",
+          "inferred": true
+        }
+      ]
+    },
+    "0x7000924e": {
+      "class": "Cmd_Net_Connect_SC",
+      "fields": [
+        {
+          "tag": 0,
+          "name": "sNewSessionKey",
+          "type": {
+            "kind": "string"
+          },
+          "offset": "0x10",
+          "inferred": true
+        },
+        {
+          "tag": 1,
+          "name": "iExchangeInterval",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x18",
+          "inferred": true
+        }
+      ]
+    },
+    "0x7000a557": {
+      "class": "Cmd_Friend_RecommendFriend_SC",
+      "fields": [
+        {
+          "tag": 0,
+          "name": "vecFriends",
+          "type": {
+            "kind": "list",
+            "of": {
+              "kind": "struct",
+              "class": "FriendBaseInfo"
+            }
+          },
+          "offset": "0x10",
+          "inferred": true
+        },
+        {
+          "tag": 1,
+          "name": "iForceRecomNum",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x18",
+          "inferred": true
+        }
+      ]
+    },
+    "0x7000984e": {
+      "class": "Cmd_Net_Exchange_SessionKey_SC",
+      "fields": [
+        {
+          "tag": 0,
+          "name": "sNewSessionKey",
+          "type": {
+            "kind": "string"
+          },
+          "offset": "0x10",
+          "inferred": true
+        }
+      ]
+    },
+    "0x7000a04e": {
+      "class": "Cmd_Net_ServerTime_SC",
+      "fields": [
+        {
+          "tag": 0,
+          "name": "iServerTimeMS",
+          "type": {
+            "kind": "int64"
+          },
+          "offset": "0x10",
+          "inferred": true
+        },
+        {
+          "tag": 1,
+          "name": "iTimeGmtOff",
+          "type": {
+            "kind": "int64"
+          },
+          "offset": "0x18",
+          "inferred": true
+        }
+      ]
+    },
+    "0x7000b4ea": {
+      "class": "Cmd_Act_GetStatusById_SC",
+      "fields": [
+        {
+          "tag": 0,
+          "name": "vStatus",
+          "type": {
+            "kind": "list",
+            "of": {
+              "kind": "struct",
+              "class": "CmdActivityStatus"
+            }
+          },
+          "offset": "0x10",
+          "inferred": true
+        }
+      ]
+    },
+    "0x7000be99": {
+      "class": "Cmd_Ping_GetPingGroup_SC",
+      "fields": [
+        {
+          "tag": 0,
+          "name": "sGroups",
+          "type": {
+            "kind": "string"
+          },
+          "offset": "0x10",
+          "inferred": true
+        },
+        {
+          "tag": 1,
+          "name": "iPingTimeOut",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x18",
+          "inferred": true
+        },
+        {
+          "tag": 2,
+          "name": "iPingTimes",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x1c",
+          "inferred": true
+        },
+        {
+          "tag": 3,
+          "name": "vPingCommonPayloads",
+          "type": {
+            "kind": "list",
+            "of": {
+              "kind": "struct",
+              "class": "PingCommonPayloads"
+            }
+          },
+          "offset": "0x20",
+          "inferred": true
+        }
+      ]
+    },
+    "0x7000d794": {
+      "class": "Cmd_Battle_GetBattleData_SC",
+      "fields": [
+        {
+          "tag": 0,
+          "name": "iTotalNum",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x10",
+          "inferred": true
+        },
+        {
+          "tag": 1,
+          "name": "iWinNum",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x14",
+          "inferred": true
+        },
+        {
+          "tag": 2,
+          "name": "iWeekTotal",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x18",
+          "inferred": true
+        },
+        {
+          "tag": 3,
+          "name": "iWeekMax",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x1c",
+          "inferred": true
+        },
+        {
+          "tag": 4,
+          "name": "iReputation",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x20",
+          "inferred": true
+        },
+        {
+          "tag": 5,
+          "name": "iMvpNum",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x24",
+          "inferred": true
+        },
+        {
+          "tag": 6,
+          "name": "iKill2",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x28",
+          "inferred": true
+        },
+        {
+          "tag": 7,
+          "name": "iKill3",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x2c",
+          "inferred": true
+        },
+        {
+          "tag": 8,
+          "name": "iKill4",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x30",
+          "inferred": true
+        },
+        {
+          "tag": 9,
+          "name": "iKill5",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x34",
+          "inferred": true
+        },
+        {
+          "tag": 10,
+          "name": "iKillN",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x38",
+          "inferred": true
+        },
+        {
+          "tag": 11,
+          "name": "iAveKda",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x3c",
+          "inferred": true
+        },
+        {
+          "tag": 12,
+          "name": "iAveJoin",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x40",
+          "inferred": true
+        },
+        {
+          "tag": 13,
+          "name": "iAveMoney",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x44",
+          "inferred": true
+        },
+        {
+          "tag": 14,
+          "name": "iAveHurt",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x48",
+          "inferred": true
+        },
+        {
+          "tag": 15,
+          "name": "iAveBehurted",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x4c",
+          "inferred": true
+        },
+        {
+          "tag": 16,
+          "name": "iAveTowerHurt",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x50",
+          "inferred": true
+        },
+        {
+          "tag": 17,
+          "name": "ulUid",
+          "type": {
+            "kind": "int64"
+          },
+          "offset": "0x58",
+          "inferred": true
+        },
+        {
+          "tag": 18,
+          "name": "uiSvrId",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x60",
+          "inferred": true
+        },
+        {
+          "tag": 19,
+          "name": "stBase",
+          "type": {
+            "kind": "struct",
+            "class": "PlayerBaseInfo"
+          },
+          "offset": "0x68",
+          "inferred": true
+        },
+        {
+          "tag": 20,
+          "name": "uiDisplayAchieveId",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x70",
+          "inferred": true
+        },
+        {
+          "tag": 21,
+          "name": "vecHerosLastBuy",
+          "type": {
+            "kind": "list",
+            "of": {
+              "kind": "int"
+            }
+          },
+          "offset": "0x78",
+          "inferred": true
+        },
+        {
+          "tag": 22,
+          "name": "vecSkinsLastBuy",
+          "type": {
+            "kind": "list",
+            "of": {
+              "kind": "int"
+            }
+          },
+          "offset": "0x80",
+          "inferred": true
+        },
+        {
+          "tag": 23,
+          "name": "iLoseMvpNum",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x88",
+          "inferred": true
+        },
+        {
+          "tag": 24,
+          "name": "iSeasonMaxRankId",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x8c",
+          "inferred": true
+        },
+        {
+          "tag": 25,
+          "name": "iBeSupportNum",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x90",
+          "inferred": true
+        },
+        {
+          "tag": 26,
+          "name": "vecHeroDatas",
+          "type": {
+            "kind": "list",
+            "of": {
+              "kind": "struct",
+              "class": "HeroBattleData"
+            }
+          },
+          "offset": "0x98",
+          "inferred": true
+        },
+        {
+          "tag": 27,
+          "name": "vecBattleRecords",
+          "type": {
+            "kind": "list",
+            "of": {
+              "kind": "struct",
+              "class": "BattleRecord"
+            }
+          },
+          "offset": "0xa0",
+          "inferred": true
+        },
+        {
+          "tag": 28,
+          "name": "mapBattleDataByType",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "int"
+            },
+            "value": {
+              "kind": "struct",
+              "class": "BattleDataByType"
+            }
+          },
+          "offset": "0xa8",
+          "inferred": true
+        },
+        {
+          "tag": 29,
+          "name": "stLiveInfo",
+          "type": {
+            "kind": "struct",
+            "class": "RoleLiveInfo"
+          },
+          "offset": "0xb0",
+          "inferred": true
+        },
+        {
+          "tag": 30,
+          "name": "bCollectionWall",
+          "type": {
+            "kind": "bool"
+          },
+          "offset": "0xb8",
+          "inferred": true
+        },
+        {
+          "tag": 31,
+          "name": "stPlayerCollection",
+          "type": {
+            "kind": "struct",
+            "class": "PlayerCollection"
+          },
+          "offset": "0xc0",
+          "inferred": true
+        },
+        {
+          "tag": 32,
+          "name": "iRankType",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0xc8",
+          "inferred": true
+        },
+        {
+          "tag": 33,
+          "name": "iRankHeroId",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0xcc",
+          "inferred": true
+        },
+        {
+          "tag": 34,
+          "name": "bSupportBattleReportDetail",
+          "type": {
+            "kind": "bool"
+          },
+          "offset": "0xd0",
+          "inferred": true
+        },
+        {
+          "tag": 35,
+          "name": "iReputationGuideVersion",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0xd4",
+          "inferred": true
+        },
+        {
+          "tag": 36,
+          "name": "iReputationGuideVersionNew",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0xd8",
+          "inferred": true
+        },
+        {
+          "tag": 37,
+          "name": "iRecentSubReputationNum",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0xdc",
+          "inferred": true
+        },
+        {
+          "tag": 38,
+          "name": "iRecoverReputationNum",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0xe0",
+          "inferred": true
+        },
+        {
+          "tag": 39,
+          "name": "iRecoverReputationLimit",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0xe4",
+          "inferred": true
+        },
+        {
+          "tag": 40,
+          "name": "iPopularity",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0xe8",
+          "inferred": true
+        },
+        {
+          "tag": 41,
+          "name": "mHeroUseCountInSelectHeroUI",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "int"
+            },
+            "value": {
+              "kind": "int"
+            }
+          },
+          "offset": "0xf0",
+          "inferred": true
+        },
+        {
+          "tag": 42,
+          "name": "sMd5",
+          "type": {
+            "kind": "string"
+          },
+          "offset": "0xf8",
+          "inferred": true
+        },
+        {
+          "tag": 43,
+          "name": "bJumpNewerStage",
+          "type": {
+            "kind": "bool"
+          },
+          "offset": "0x100",
+          "inferred": true
+        },
+        {
+          "tag": 44,
+          "name": "isCanEnterPvpBattle",
+          "type": {
+            "kind": "bool"
+          },
+          "offset": "0x101",
+          "inferred": true
+        },
+        {
+          "tag": 45,
+          "name": "stAllPlayerTitle",
+          "type": {
+            "kind": "struct",
+            "class": "CmdTitle"
+          },
+          "offset": "0x108",
+          "inferred": true
+        }
+      ]
+    },
+    "0x7000e04f": {
+      "class": "Cmd_Account_GetAccount_SC",
+      "fields": [
+        {
+          "tag": 0,
+          "name": "iAccountId",
+          "type": {
+            "kind": "int64"
+          },
+          "offset": "0x10",
+          "inferred": true
+        },
+        {
+          "tag": 1,
+          "name": "vAccountInfo",
+          "type": {
+            "kind": "list",
+            "of": {
+              "kind": "struct",
+              "class": "CmdAccountInfo"
+            }
+          },
+          "offset": "0x18",
+          "inferred": true
+        },
+        {
+          "tag": 2,
+          "name": "vRoleList",
+          "type": {
+            "kind": "list",
+            "of": {
+              "kind": "struct",
+              "class": "CmdRoleInfo"
+            }
+          },
+          "offset": "0x20",
+          "inferred": true
+        },
+        {
+          "tag": 3,
+          "name": "vZoneList",
+          "type": {
+            "kind": "list",
+            "of": {
+              "kind": "struct",
+              "class": "CmdZoneInfo"
+            }
+          },
+          "offset": "0x28",
+          "inferred": true
+        },
+        {
+          "tag": 4,
+          "name": "ui4UpdateDevice",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x30",
+          "inferred": true
+        },
+        {
+          "tag": 5,
+          "name": "uiSecureCheckStep",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x34",
+          "inferred": true
+        },
+        {
+          "tag": 6,
+          "name": "uiCheckZoneId",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x38",
+          "inferred": true
+        },
+        {
+          "tag": 7,
+          "name": "iAccountDeviceType",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x3c",
+          "inferred": true
+        },
+        {
+          "tag": 8,
+          "name": "bMTRewardTaken",
+          "type": {
+            "kind": "bool"
+          },
+          "offset": "0x40",
+          "inferred": true
+        },
+        {
+          "tag": 9,
+          "name": "bThirdRewardTaken",
+          "type": {
+            "kind": "bool"
+          },
+          "offset": "0x41",
+          "inferred": true
+        },
+        {
+          "tag": 10,
+          "name": "bMTMailRewardTaken",
+          "type": {
+            "kind": "bool"
+          },
+          "offset": "0x42",
+          "inferred": true
+        },
+        {
+          "tag": 11,
+          "name": "bOpenUpdateDeviceUseMTEmail",
+          "type": {
+            "kind": "bool"
+          },
+          "offset": "0x43",
+          "inferred": true
+        },
+        {
+          "tag": 12,
+          "name": "sUpdateDeviceVerifyMTEmail",
+          "type": {
+            "kind": "string"
+          },
+          "offset": "0x48",
+          "inferred": true
+        },
+        {
+          "tag": 13,
+          "name": "sUpdateDeviceVerifyMTEmail4Set",
+          "type": {
+            "kind": "string"
+          },
+          "offset": "0x50",
+          "inferred": true
+        },
+        {
+          "tag": 14,
+          "name": "sUpdateDeviceVerifyMTPhone",
+          "type": {
+            "kind": "string"
+          },
+          "offset": "0x58",
+          "inferred": true
+        },
+        {
+          "tag": 15,
+          "name": "bMTPhoneRewardTaken",
+          "type": {
+            "kind": "bool"
+          },
+          "offset": "0x60",
+          "inferred": true
+        },
+        {
+          "tag": 16,
+          "name": "iDeviceAccountNum",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x64",
+          "inferred": true
+        },
+        {
+          "tag": 17,
+          "name": "iPreMTId",
+          "type": {
+            "kind": "int64"
+          },
+          "offset": "0x68",
+          "inferred": true
+        },
+        {
+          "tag": 18,
+          "name": "bTrimDeviceAcc",
+          "type": {
+            "kind": "bool"
+          },
+          "offset": "0x70",
+          "inferred": true
+        },
+        {
+          "tag": 19,
+          "name": "bNeedForceChangeMTPwd",
+          "type": {
+            "kind": "bool"
+          },
+          "offset": "0x71",
+          "inferred": true
+        },
+        {
+          "tag": 20,
+          "name": "stTwitchUserData",
+          "type": {
+            "kind": "struct",
+            "class": "CmdTwitchUserData"
+          },
+          "offset": "0x78",
+          "inferred": true
+        },
+        {
+          "tag": 21,
+          "name": "stAgeControl",
+          "type": {
+            "kind": "struct",
+            "class": "CmdAgeControl"
+          },
+          "offset": "0x80",
+          "inferred": true
+        }
+      ]
+    },
+    "0x7000f64e": {
+      "class": "Cmd_Role_Init_SC",
+      "fields": [
+        {
+          "tag": 0,
+          "name": "iUid",
+          "type": {
+            "kind": "int64"
+          },
+          "offset": "0x10",
+          "inferred": true
+        },
+        {
+          "tag": 1,
+          "name": "sName",
+          "type": {
+            "kind": "string"
+          },
+          "offset": "0x18",
+          "inferred": true
+        },
+        {
+          "tag": 2,
+          "name": "iExp",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x20",
+          "inferred": true
+        },
+        {
+          "tag": 3,
+          "name": "iLevel",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x24",
+          "inferred": true
+        },
+        {
+          "tag": 4,
+          "name": "iCoin",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x28",
+          "inferred": true
+        },
+        {
+          "tag": 5,
+          "name": "iGuideStep",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x2c",
+          "inferred": true
+        },
+        {
+          "tag": 6,
+          "name": "iGuideSubStep",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x30",
+          "inferred": true
+        },
+        {
+          "tag": 7,
+          "name": "iFaceId",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x34",
+          "inferred": true
+        },
+        {
+          "tag": 8,
+          "name": "iNationality",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x38",
+          "inferred": true
+        },
+        {
+          "tag": 9,
+          "name": "sTips",
+          "type": {
+            "kind": "string"
+          },
+          "offset": "0x40",
+          "inferred": true
+        },
+        {
+          "tag": 10,
+          "name": "iRoleFlag",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x48",
+          "inferred": true
+        },
+        {
+          "tag": 11,
+          "name": "iDiamond",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x4c",
+          "inferred": true
+        },
+        {
+          "tag": 12,
+          "name": "iCreateRoleTime",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x50",
+          "inferred": true
+        },
+        {
+          "tag": 13,
+          "name": "iLastLoginTime",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x54",
+          "inferred": true
+        },
+        {
+          "tag": 14,
+          "name": "bHasNewMail",
+          "type": {
+            "kind": "bool"
+          },
+          "offset": "0x58",
+          "inferred": true
+        },
+        {
+          "tag": 15,
+          "name": "iRankLevel",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x5c",
+          "inferred": true
+        },
+        {
+          "tag": 16,
+          "name": "iGuideSwitchFlag",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x60",
+          "inferred": true
+        },
+        {
+          "tag": 17,
+          "name": "iPVPRank",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x64",
+          "inferred": true
+        },
+        {
+          "tag": 18,
+          "name": "iRankSeasonGMIsOpen",
+          "type": {
+            "kind": "bool"
+          },
+          "offset": "0x68",
+          "inferred": true
+        },
+        {
+          "tag": 19,
+          "name": "iFaceBorderId",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x6c",
+          "inferred": true
+        },
+        {
+          "tag": 20,
+          "name": "iTotalCharge",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x70",
+          "inferred": true
+        },
+        {
+          "tag": 21,
+          "name": "iRandomScore",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x74",
+          "inferred": true
+        },
+        {
+          "tag": 22,
+          "name": "sFacePath",
+          "type": {
+            "kind": "string"
+          },
+          "offset": "0x78",
+          "inferred": true
+        },
+        {
+          "tag": 23,
+          "name": "iPreviousFaceUploadTime",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x80",
+          "inferred": true
+        },
+        {
+          "tag": 24,
+          "name": "bElva",
+          "type": {
+            "kind": "bool"
+          },
+          "offset": "0x84",
+          "inferred": true
+        },
+        {
+          "tag": 25,
+          "name": "mLuaCodeFromServer",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "string"
+            }
+          },
+          "offset": "0x88",
+          "inferred": true
+        },
+        {
+          "tag": 26,
+          "name": "vServerDataStr",
+          "type": {
+            "kind": "list",
+            "of": {
+              "kind": "struct",
+              "class": "CmdServerUpdateStr"
+            }
+          },
+          "offset": "0x90",
+          "inferred": true
+        },
+        {
+          "tag": 27,
+          "name": "iRankUpStarPoint",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x98",
+          "inferred": true
+        },
+        {
+          "tag": 28,
+          "name": "iRankProtectPoint",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x9c",
+          "inferred": true
+        },
+        {
+          "tag": 29,
+          "name": "iLastChangeNationTime",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0xa0",
+          "inferred": true
+        },
+        {
+          "tag": 30,
+          "name": "iChangeNationCD",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0xa4",
+          "inferred": true
+        },
+        {
+          "tag": 31,
+          "name": "iTicket",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0xa8",
+          "inferred": true
+        },
+        {
+          "tag": 32,
+          "name": "iTeamId",
+          "type": {
+            "kind": "int64"
+          },
+          "offset": "0xb0",
+          "inferred": true
+        },
+        {
+          "tag": 33,
+          "name": "iGenderId",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0xb8",
+          "inferred": true
+        },
+        {
+          "tag": 34,
+          "name": "iLastChangeGenderTime",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0xbc",
+          "inferred": true
+        },
+        {
+          "tag": 35,
+          "name": "iChangeGenderCD",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0xc0",
+          "inferred": true
+        },
+        {
+          "tag": 36,
+          "name": "iChatLanguage",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0xc4",
+          "inferred": true
+        },
+        {
+          "tag": 37,
+          "name": "bIsOpenLive",
+          "type": {
+            "kind": "bool"
+          },
+          "offset": "0xc8",
+          "inferred": true
+        },
+        {
+          "tag": 38,
+          "name": "iMostBattleGroupId",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0xcc",
+          "inferred": true
+        },
+        {
+          "tag": 39,
+          "name": "bEpicPop",
+          "type": {
+            "kind": "bool"
+          },
+          "offset": "0xd0",
+          "inferred": true
+        },
+        {
+          "tag": 40,
+          "name": "iLoginDays",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0xd4",
+          "inferred": true
+        },
+        {
+          "tag": 41,
+          "name": "iChangeNationTimes",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0xd8",
+          "inferred": true
+        },
+        {
+          "tag": 42,
+          "name": "bUseNewWarmBattleLogic",
+          "type": {
+            "kind": "bool"
+          },
+          "offset": "0xdc",
+          "inferred": true
+        },
+        {
+          "tag": 43,
+          "name": "iFreeRandomHeroSec",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0xe0",
+          "inferred": true
+        },
+        {
+          "tag": 44,
+          "name": "bUseNewRuneLogic",
+          "type": {
+            "kind": "bool"
+          },
+          "offset": "0xe4",
+          "inferred": true
+        },
+        {
+          "tag": 45,
+          "name": "sID",
+          "type": {
+            "kind": "string"
+          },
+          "offset": "0xe8",
+          "inferred": true
+        },
+        {
+          "tag": 46,
+          "name": "bCharged",
+          "type": {
+            "kind": "bool"
+          },
+          "offset": "0xf0",
+          "inferred": true
+        },
+        {
+          "tag": 47,
+          "name": "bIsCybersportsPlayer",
+          "type": {
+            "kind": "bool"
+          },
+          "offset": "0xf1",
+          "inferred": true
+        },
+        {
+          "tag": 48,
+          "name": "sClientGuide",
+          "type": {
+            "kind": "string"
+          },
+          "offset": "0xf8",
+          "inferred": true
+        },
+        {
+          "tag": 49,
+          "name": "sProtocol",
+          "type": {
+            "kind": "string"
+          },
+          "offset": "0x100",
+          "inferred": true
+        },
+        {
+          "tag": 50,
+          "name": "bFaceHD",
+          "type": {
+            "kind": "bool"
+          },
+          "offset": "0x108",
+          "inferred": true
+        },
+        {
+          "tag": 51,
+          "name": "vCurPos",
+          "type": {
+            "kind": "list",
+            "of": {
+              "kind": "string"
+            }
+          },
+          "offset": "0x110",
+          "inferred": true
+        },
+        {
+          "tag": 52,
+          "name": "uiQueryPosTime",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x118",
+          "inferred": true
+        },
+        {
+          "tag": 53,
+          "name": "sPosCountryCode",
+          "type": {
+            "kind": "string"
+          },
+          "offset": "0x120",
+          "inferred": true
+        },
+        {
+          "tag": 54,
+          "name": "iSurviveRank",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x128",
+          "inferred": true
+        },
+        {
+          "tag": 55,
+          "name": "iSurviveRankScore",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x12c",
+          "inferred": true
+        },
+        {
+          "tag": 56,
+          "name": "sGmThisLoginCountry",
+          "type": {
+            "kind": "string"
+          },
+          "offset": "0x130",
+          "inferred": true
+        },
+        {
+          "tag": 57,
+          "name": "iRoleInitReward",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x138",
+          "inferred": true
+        },
+        {
+          "tag": 58,
+          "name": "stUpReportVideoInfo",
+          "type": {
+            "kind": "struct",
+            "class": "UpReportVideoInfo"
+          },
+          "offset": "0x140",
+          "inferred": true
+        },
+        {
+          "tag": 59,
+          "name": "iGuideVersion",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x148",
+          "inferred": true
+        },
+        {
+          "tag": 60,
+          "name": "mGuideRewardInfo",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "int"
+            },
+            "value": {
+              "kind": "int"
+            }
+          },
+          "offset": "0x150",
+          "inferred": true
+        },
+        {
+          "tag": 61,
+          "name": "iFreeRandomHeroSecOfSingleSurvive",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x158",
+          "inferred": true
+        },
+        {
+          "tag": 62,
+          "name": "iMythPoint",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x15c",
+          "inferred": true
+        },
+        {
+          "tag": 63,
+          "name": "bMythEvaled",
+          "type": {
+            "kind": "bool"
+          },
+          "offset": "0x160",
+          "inferred": true
+        },
+        {
+          "tag": 64,
+          "name": "vMythEvalBattle",
+          "type": {
+            "kind": "list",
+            "of": {
+              "kind": "int"
+            }
+          },
+          "offset": "0x168",
+          "inferred": true
+        },
+        {
+          "tag": 65,
+          "name": "iLiveLevel",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x170",
+          "inferred": true
+        },
+        {
+          "tag": 66,
+          "name": "iLiveExp",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x174",
+          "inferred": true
+        },
+        {
+          "tag": 67,
+          "name": "iLiveAnchorLevel",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x178",
+          "inferred": true
+        },
+        {
+          "tag": 68,
+          "name": "iLiveAnchorExp",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x17c",
+          "inferred": true
+        },
+        {
+          "tag": 69,
+          "name": "iDefenseRank",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x180",
+          "inferred": true
+        },
+        {
+          "tag": 70,
+          "name": "iDefenseRankScore",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x184",
+          "inferred": true
+        },
+        {
+          "tag": 71,
+          "name": "uiMagicChessSeasonID",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x188",
+          "inferred": true
+        },
+        {
+          "tag": 72,
+          "name": "uiMagicChessCupNum",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x18c",
+          "inferred": true
+        },
+        {
+          "tag": 73,
+          "name": "uiMagicChessRankID",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x190",
+          "inferred": true
+        },
+        {
+          "tag": 74,
+          "name": "uiMagicChessCupNumMax",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x194",
+          "inferred": true
+        },
+        {
+          "tag": 75,
+          "name": "uiMagicChessRankIDMax",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x198",
+          "inferred": true
+        },
+        {
+          "tag": 76,
+          "name": "iNewRoleGuideType",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x19c",
+          "inferred": true
+        },
+        {
+          "tag": 77,
+          "name": "iChessGuideStep",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x1a0",
+          "inferred": true
+        },
+        {
+          "tag": 78,
+          "name": "iChessGuideSubStep",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x1a4",
+          "inferred": true
+        },
+        {
+          "tag": 79,
+          "name": "uiDefenceRankIDMax",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x1a8",
+          "inferred": true
+        },
+        {
+          "tag": 80,
+          "name": "uiDefenceRankScoreMax",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x1ac",
+          "inferred": true
+        },
+        {
+          "tag": 81,
+          "name": "bUploadFaceTip",
+          "type": {
+            "kind": "bool"
+          },
+          "offset": "0x1b0",
+          "inferred": true
+        },
+        {
+          "tag": 82,
+          "name": "uiGuideTowerSwitch",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x1b4",
+          "inferred": true
+        },
+        {
+          "tag": 83,
+          "name": "mGuideInnerInfo",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "int"
+            },
+            "value": {
+              "kind": "int"
+            }
+          },
+          "offset": "0x1b8",
+          "inferred": true
+        },
+        {
+          "tag": 84,
+          "name": "bManuallySetWantSelectHero",
+          "type": {
+            "kind": "bool"
+          },
+          "offset": "0x1c0",
+          "inferred": true
+        },
+        {
+          "tag": 85,
+          "name": "uiKolLiveWatchHot",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x1c4",
+          "inferred": true
+        },
+        {
+          "tag": 86,
+          "name": "sStateName",
+          "type": {
+            "kind": "string"
+          },
+          "offset": "0x1c8",
+          "inferred": true
+        },
+        {
+          "tag": 87,
+          "name": "sCreateRoleCountry",
+          "type": {
+            "kind": "string"
+          },
+          "offset": "0x1d0",
+          "inferred": true
+        },
+        {
+          "tag": 88,
+          "name": "uiArenaCupNum",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x1d8",
+          "inferred": true
+        },
+        {
+          "tag": 89,
+          "name": "uiArenaRankID",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x1dc",
+          "inferred": true
+        },
+        {
+          "tag": 90,
+          "name": "sGrayVersion",
+          "type": {
+            "kind": "string"
+          },
+          "offset": "0x1e0",
+          "inferred": true
+        },
+        {
+          "tag": 91,
+          "name": "bGrayPickUp",
+          "type": {
+            "kind": "bool"
+          },
+          "offset": "0x1e8",
+          "inferred": true
+        },
+        {
+          "tag": 92,
+          "name": "iNewbieGuideType",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x1ec",
+          "inferred": true
+        },
+        {
+          "tag": 93,
+          "name": "iHistoryRankId",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x1f0",
+          "inferred": true
+        },
+        {
+          "tag": 94,
+          "name": "iRankRecordBattleTimes",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x1f4",
+          "inferred": true
+        },
+        {
+          "tag": 95,
+          "name": "stChatExtParam",
+          "type": {
+            "kind": "struct",
+            "class": "ChatExParam"
+          },
+          "offset": "0x1f8",
+          "inferred": true
+        },
+        {
+          "tag": 96,
+          "name": "bCloseReqAddFriend",
+          "type": {
+            "kind": "bool"
+          },
+          "offset": "0x200",
+          "inferred": true
+        },
+        {
+          "tag": 97,
+          "name": "bForbidSeeBattleReport",
+          "type": {
+            "kind": "bool"
+          },
+          "offset": "0x201",
+          "inferred": true
+        },
+        {
+          "tag": 98,
+          "name": "bBDAssetsReport",
+          "type": {
+            "kind": "bool"
+          },
+          "offset": "0x202",
+          "inferred": true
+        },
+        {
+          "tag": 99,
+          "name": "uiLevelExpActivityId",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x204",
+          "inferred": true
+        },
+        {
+          "tag": 100,
+          "name": "uiLevelExpConfigID",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x208",
+          "inferred": true
+        },
+        {
+          "tag": 101,
+          "name": "stServerSwitch",
+          "type": {
+            "kind": "struct",
+            "class": "ServerSaveSwitch"
+          },
+          "offset": "0x210",
+          "inferred": true
+        },
+        {
+          "tag": 102,
+          "name": "sEncodeDeviceId",
+          "type": {
+            "kind": "string"
+          },
+          "offset": "0x218",
+          "inferred": true
+        },
+        {
+          "tag": 103,
+          "name": "bChangeName",
+          "type": {
+            "kind": "bool"
+          },
+          "offset": "0x220",
+          "inferred": true
+        },
+        {
+          "tag": 104,
+          "name": "iPreviousBattleResearchTime",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x224",
+          "inferred": true
+        },
+        {
+          "tag": 105,
+          "name": "stErrorLogPermission",
+          "type": {
+            "kind": "struct",
+            "class": "UpReportErrorLog"
+          },
+          "offset": "0x228",
+          "inferred": true
+        },
+        {
+          "tag": 106,
+          "name": "iBattleResearchCount",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x230",
+          "inferred": true
+        },
+        {
+          "tag": 107,
+          "name": "stRecommendByDeviceInfo",
+          "type": {
+            "kind": "struct",
+            "class": "RecommendByDeviceInfo"
+          },
+          "offset": "0x238",
+          "inferred": true
+        },
+        {
+          "tag": 108,
+          "name": "stLoginAlert",
+          "type": {
+            "kind": "struct",
+            "class": "CmdLoginAlert"
+          },
+          "offset": "0x240",
+          "inferred": true
+        },
+        {
+          "tag": 109,
+          "name": "bIllustrateCornerEffectClose",
+          "type": {
+            "kind": "bool"
+          },
+          "offset": "0x248",
+          "inferred": true
+        },
+        {
+          "tag": 110,
+          "name": "iFBBindRewardStatus",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x24c",
+          "inferred": true
+        },
+        {
+          "tag": 111,
+          "name": "iLogoutTime",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x250",
+          "inferred": true
+        },
+        {
+          "tag": 112,
+          "name": "uiRankJourneyScore",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x254",
+          "inferred": true
+        },
+        {
+          "tag": 113,
+          "name": "vRankJourneyScoreTaken",
+          "type": {
+            "kind": "list",
+            "of": {
+              "kind": "int"
+            }
+          },
+          "offset": "0x258",
+          "inferred": true
+        },
+        {
+          "tag": 114,
+          "name": "iSeasonResetRankID",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x260",
+          "inferred": true
+        },
+        {
+          "tag": 115,
+          "name": "uiBattleReportSeeType",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x264",
+          "inferred": true
+        },
+        {
+          "tag": 116,
+          "name": "bLastRoomOnceAgainNotify",
+          "type": {
+            "kind": "bool"
+          },
+          "offset": "0x268",
+          "inferred": true
+        },
+        {
+          "tag": 117,
+          "name": "bRankReview",
+          "type": {
+            "kind": "bool"
+          },
+          "offset": "0x269",
+          "inferred": true
+        },
+        {
+          "tag": 118,
+          "name": "uiChangePosTime",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x26c",
+          "inferred": true
+        },
+        {
+          "tag": 119,
+          "name": "bActGetListNewAble",
+          "type": {
+            "kind": "bool"
+          },
+          "offset": "0x270",
+          "inferred": true
+        },
+        {
+          "tag": 120,
+          "name": "iRankJourneyLastFirstWinTime",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x274",
+          "inferred": true
+        },
+        {
+          "tag": 121,
+          "name": "iNewerGetFreeHeroID",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x278",
+          "inferred": true
+        },
+        {
+          "tag": 122,
+          "name": "mStageSelectHero",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "int"
+            },
+            "value": {
+              "kind": "int"
+            }
+          },
+          "offset": "0x280",
+          "inferred": true
+        },
+        {
+          "tag": 123,
+          "name": "iNameShowType",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x288",
+          "inferred": true
+        },
+        {
+          "tag": 124,
+          "name": "bFirstSeasonRankNewUIOpen",
+          "type": {
+            "kind": "bool"
+          },
+          "offset": "0x28c",
+          "inferred": true
+        },
+        {
+          "tag": 125,
+          "name": "stPerfByteScoreByDeviceInfo",
+          "type": {
+            "kind": "struct",
+            "class": "PerfByteScoreByDeviceInfo"
+          },
+          "offset": "0x290",
+          "inferred": true
+        },
+        {
+          "tag": 126,
+          "name": "bOpenByteDanceCS",
+          "type": {
+            "kind": "bool"
+          },
+          "offset": "0x298",
+          "inferred": true
+        },
+        {
+          "tag": 127,
+          "name": "bByteDanceCSNewMsg",
+          "type": {
+            "kind": "bool"
+          },
+          "offset": "0x299",
+          "inferred": true
+        },
+        {
+          "tag": 128,
+          "name": "bAcceptApply",
+          "type": {
+            "kind": "bool"
+          },
+          "offset": "0x29a",
+          "inferred": true
+        },
+        {
+          "tag": 129,
+          "name": "bEnterRoom",
+          "type": {
+            "kind": "bool"
+          },
+          "offset": "0x29b",
+          "inferred": true
+        },
+        {
+          "tag": 130,
+          "name": "bLook",
+          "type": {
+            "kind": "bool"
+          },
+          "offset": "0x29c",
+          "inferred": true
+        },
+        {
+          "tag": 131,
+          "name": "bOpenInviteJoinInRoom",
+          "type": {
+            "kind": "bool"
+          },
+          "offset": "0x29d",
+          "inferred": true
+        },
+        {
+          "tag": 132,
+          "name": "uOpenLBSGeo",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x2a0",
+          "inferred": true
+        },
+        {
+          "tag": 133,
+          "name": "uSettingTitleHide",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x2a4",
+          "inferred": true
+        },
+        {
+          "tag": 134,
+          "name": "uiMagicChessBattleNum",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x2a8",
+          "inferred": true
+        },
+        {
+          "tag": 135,
+          "name": "vNewbieTreasure",
+          "type": {
+            "kind": "list",
+            "of": {
+              "kind": "int"
+            }
+          },
+          "offset": "0x2b0",
+          "inferred": true
+        },
+        {
+          "tag": 136,
+          "name": "uiSeasonMagicChessRankIDMax",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x2b8",
+          "inferred": true
+        },
+        {
+          "tag": 137,
+          "name": "stLuaCodeFromServerIncrUpdate",
+          "type": {
+            "kind": "struct",
+            "class": "LuaCodeRefresh"
+          },
+          "offset": "0x2c0",
+          "inferred": true
+        },
+        {
+          "tag": 138,
+          "name": "mapOfflinePushSwitch",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "int"
+            },
+            "value": {
+              "kind": "bool"
+            }
+          },
+          "offset": "0x2c8",
+          "inferred": true
+        },
+        {
+          "tag": 139,
+          "name": "uiMagicChessTotalBattleNum",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x2d0",
+          "inferred": true
+        },
+        {
+          "tag": 140,
+          "name": "bFristSeasonUser",
+          "type": {
+            "kind": "bool"
+          },
+          "offset": "0x2d4",
+          "inferred": true
+        },
+        {
+          "tag": 141,
+          "name": "bFristSeasonIng",
+          "type": {
+            "kind": "bool"
+          },
+          "offset": "0x2d5",
+          "inferred": true
+        },
+        {
+          "tag": 142,
+          "name": "uiMagicChessLevel",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x2d8",
+          "inferred": true
+        },
+        {
+          "tag": 143,
+          "name": "uiMagicChessExp",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x2dc",
+          "inferred": true
+        },
+        {
+          "tag": 144,
+          "name": "uiMagicChessCoin",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x2e0",
+          "inferred": true
+        },
+        {
+          "tag": 145,
+          "name": "iGetActListVersion",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x2e4",
+          "inferred": true
+        },
+        {
+          "tag": 146,
+          "name": "iSubRankID",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x2e8",
+          "inferred": true
+        },
+        {
+          "tag": 147,
+          "name": "bOpenSubRank",
+          "type": {
+            "kind": "bool"
+          },
+          "offset": "0x2ec",
+          "inferred": true
+        },
+        {
+          "tag": 148,
+          "name": "uiCurCurtainId",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x2f0",
+          "inferred": true
+        },
+        {
+          "tag": 149,
+          "name": "iFiveRankBattleTimes",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x2f4",
+          "inferred": true
+        },
+        {
+          "tag": 150,
+          "name": "stRecommendByDeviceInfoNew",
+          "type": {
+            "kind": "struct",
+            "class": "RecommendByDeviceInfoNew"
+          },
+          "offset": "0x2f8",
+          "inferred": true
+        },
+        {
+          "tag": 151,
+          "name": "iComputerSkinningOpen",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x300",
+          "inferred": true
+        },
+        {
+          "tag": 152,
+          "name": "iRewardNum",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x304",
+          "inferred": true
+        },
+        {
+          "tag": 153,
+          "name": "iRewardLevel",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x308",
+          "inferred": true
+        },
+        {
+          "tag": 154,
+          "name": "vReward",
+          "type": {
+            "kind": "list",
+            "of": {
+              "kind": "string"
+            }
+          },
+          "offset": "0x310",
+          "inferred": true
+        },
+        {
+          "tag": 155,
+          "name": "dLBSX",
+          "type": {
+            "kind": "double"
+          },
+          "offset": "0x318",
+          "inferred": true
+        },
+        {
+          "tag": 156,
+          "name": "dLBSY",
+          "type": {
+            "kind": "double"
+          },
+          "offset": "0x320",
+          "inferred": true
+        },
+        {
+          "tag": 157,
+          "name": "iRoleFightPowerValue",
+          "type": {
+            "kind": "int64"
+          },
+          "offset": "0x328",
+          "inferred": true
+        },
+        {
+          "tag": 158,
+          "name": "iRoleFightPowerLvl",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x330",
+          "inferred": true
+        },
+        {
+          "tag": 159,
+          "name": "sEncryptParam",
+          "type": {
+            "kind": "string"
+          },
+          "offset": "0x338",
+          "inferred": true
+        },
+        {
+          "tag": 160,
+          "name": "ulModeBattleID",
+          "type": {
+            "kind": "int64"
+          },
+          "offset": "0x340",
+          "inferred": true
+        },
+        {
+          "tag": 161,
+          "name": "mClientSettingPartInfo",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "int"
+            },
+            "value": {
+              "kind": "string"
+            }
+          },
+          "offset": "0x348",
+          "inferred": true
+        },
+        {
+          "tag": 162,
+          "name": "vServerDataStrDel",
+          "type": {
+            "kind": "list",
+            "of": {
+              "kind": "int"
+            }
+          },
+          "offset": "0x350",
+          "inferred": true
+        },
+        {
+          "tag": 163,
+          "name": "iServerDataStrTimestamp",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x358",
+          "inferred": true
+        },
+        {
+          "tag": 164,
+          "name": "stRankSeasonConf",
+          "type": {
+            "kind": "struct",
+            "class": "CmdRankSeasonConf"
+          },
+          "offset": "0x360",
+          "inferred": true
+        },
+        {
+          "tag": 165,
+          "name": "stThermalThrotting",
+          "type": {
+            "kind": "struct",
+            "class": "ThermalThrottlingByDeviceInfo"
+          },
+          "offset": "0x368",
+          "inferred": true
+        },
+        {
+          "tag": 166,
+          "name": "stLoadLevelByClientBenchScrore",
+          "type": {
+            "kind": "struct",
+            "class": "LoadLevelByClientBenchScrore"
+          },
+          "offset": "0x370",
+          "inferred": true
+        },
+        {
+          "tag": 167,
+          "name": "isCanEnterPvpBattle",
+          "type": {
+            "kind": "bool"
+          },
+          "offset": "0x378",
+          "inferred": true
+        },
+        {
+          "tag": 168,
+          "name": "iTotalBattleNum",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x37c",
+          "inferred": true
+        },
+        {
+          "tag": 169,
+          "name": "stNameDisplay",
+          "type": {
+            "kind": "struct",
+            "class": "ProtoNameDisplay"
+          },
+          "offset": "0x380",
+          "inferred": true
+        },
+        {
+          "tag": 170,
+          "name": "bBlackGroupLook",
+          "type": {
+            "kind": "bool"
+          },
+          "offset": "0x388",
+          "inferred": true
+        },
+        {
+          "tag": 171,
+          "name": "stRecommendByRandomAlloc",
+          "type": {
+            "kind": "struct",
+            "class": "RecommendByRandomAlloc"
+          },
+          "offset": "0x390",
+          "inferred": true
+        },
+        {
+          "tag": 172,
+          "name": "stRecommendByIntelligent",
+          "type": {
+            "kind": "struct",
+            "class": "RecommendByIntelligent"
+          },
+          "offset": "0x398",
+          "inferred": true
+        },
+        {
+          "tag": 173,
+          "name": "vNewbieActList",
+          "type": {
+            "kind": "list",
+            "of": {
+              "kind": "int"
+            }
+          },
+          "offset": "0x3a0",
+          "inferred": true
+        },
+        {
+          "tag": 174,
+          "name": "bBanTeamInvite",
+          "type": {
+            "kind": "bool"
+          },
+          "offset": "0x3a8",
+          "inferred": true
+        },
+        {
+          "tag": 175,
+          "name": "sDeviceModel",
+          "type": {
+            "kind": "string"
+          },
+          "offset": "0x3b0",
+          "inferred": true
+        },
+        {
+          "tag": 176,
+          "name": "bIsSeasonAchievementV2",
+          "type": {
+            "kind": "bool"
+          },
+          "offset": "0x3b8",
+          "inferred": true
+        },
+        {
+          "tag": 177,
+          "name": "vYoungDisabledFunc",
+          "type": {
+            "kind": "list",
+            "of": {
+              "kind": "int"
+            }
+          },
+          "offset": "0x3c0",
+          "inferred": true
+        },
+        {
+          "tag": 178,
+          "name": "bZendesk",
+          "type": {
+            "kind": "bool"
+          },
+          "offset": "0x3c8",
+          "inferred": true
+        },
+        {
+          "tag": 179,
+          "name": "bSuperRole",
+          "type": {
+            "kind": "bool"
+          },
+          "offset": "0x3c9",
+          "inferred": true
+        },
+        {
+          "tag": 180,
+          "name": "iNewPerfScore",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x3cc",
+          "inferred": true
+        },
+        {
+          "tag": 181,
+          "name": "iNewPerfScoreSource",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x3d0",
+          "inferred": true
+        },
+        {
+          "tag": 182,
+          "name": "stGpuParticleByDeviceInfo",
+          "type": {
+            "kind": "struct",
+            "class": "GpuParticleByDeviceInfo"
+          },
+          "offset": "0x3d8",
+          "inferred": true
+        }
+      ]
+    },
+    "0x7000f9ff": {
+      "class": "Cmd_Act_CityPing_GetPing_SC",
+      "fields": [
+        {
+          "tag": 0,
+          "name": "iActivityId",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x10",
+          "inferred": true
+        },
+        {
+          "tag": 1,
+          "name": "vecPing",
+          "type": {
+            "kind": "list",
+            "of": {
+              "kind": "struct",
+              "class": "Act_CityPingInfo"
+            }
+          },
+          "offset": "0x18",
+          "inferred": true
+        }
+      ]
+    },
+    "0x70008452": {
+      "class": "Cmd_Role_GetAllABTagInfo_SC",
+      "fields": [
+        {
+          "tag": 0,
+          "name": "vABTestTag",
+          "type": {
+            "kind": "list",
+            "of": {
+              "kind": "struct",
+              "class": "CmdABTestTag"
+            }
+          },
+          "offset": "0x10",
+          "inferred": true
+        }
+      ]
+    },
+    "0x70008c52": {
+      "class": "Cmd_IAP_GetList_SC",
+      "fields": [
+        {
+          "tag": 0,
+          "name": "vIAPItem",
+          "type": {
+            "kind": "list",
+            "of": {
+              "kind": "string"
+            }
+          },
+          "offset": "0x10",
+          "inferred": true
+        },
+        {
+          "tag": 1,
+          "name": "sName",
+          "type": {
+            "kind": "string"
+          },
+          "offset": "0x18",
+          "inferred": true
+        },
+        {
+          "tag": 2,
+          "name": "sCountry",
+          "type": {
+            "kind": "string"
+          },
+          "offset": "0x20",
+          "inferred": true
+        }
+      ]
+    },
+    "0x7000a251": {
+      "class": "Cmd_Hero_GetList_SC",
+      "fields": [
+        {
+          "tag": 0,
+          "name": "vHeroList",
+          "type": {
+            "kind": "list",
+            "of": {
+              "kind": "struct",
+              "class": "CmdHeroData"
+            }
+          },
+          "offset": "0x10",
+          "inferred": true
+        },
+        {
+          "tag": 1,
+          "name": "vSkinList",
+          "type": {
+            "kind": "list",
+            "of": {
+              "kind": "struct",
+              "class": "CmdHeroSkin"
+            }
+          },
+          "offset": "0x18",
+          "inferred": true
+        },
+        {
+          "tag": 2,
+          "name": "vStatueList",
+          "type": {
+            "kind": "list",
+            "of": {
+              "kind": "struct",
+              "class": "CmdHeroStatue"
+            }
+          },
+          "offset": "0x20",
+          "inferred": true
+        },
+        {
+          "tag": 3,
+          "name": "iHerosRewardIdx",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x28",
+          "inferred": true
+        },
+        {
+          "tag": 4,
+          "name": "mSkinStarVipRank",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "int"
+            },
+            "value": {
+              "kind": "int"
+            }
+          },
+          "offset": "0x30",
+          "inferred": true
+        },
+        {
+          "tag": 5,
+          "name": "vSkinListMagicChess",
+          "type": {
+            "kind": "list",
+            "of": {
+              "kind": "struct",
+              "class": "CmdHeroSkin"
+            }
+          },
+          "offset": "0x38",
+          "inferred": true
+        },
+        {
+          "tag": 6,
+          "name": "iCurrentCommonStatue",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x40",
+          "inferred": true
+        },
+        {
+          "tag": 7,
+          "name": "mSkinTag",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "int"
+            },
+            "value": {
+              "kind": "struct",
+              "class": "SkinTag"
+            }
+          },
+          "offset": "0x48",
+          "inferred": true
+        },
+        {
+          "tag": 8,
+          "name": "mSkinNumTag",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "int"
+            },
+            "value": {
+              "kind": "struct",
+              "class": "SkinTag"
+            }
+          },
+          "offset": "0x50",
+          "inferred": true
+        },
+        {
+          "tag": 9,
+          "name": "sMd5",
+          "type": {
+            "kind": "string"
+          },
+          "offset": "0x58",
+          "inferred": true
+        },
+        {
+          "tag": 10,
+          "name": "mHeroPowerData",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "int"
+            },
+            "value": {
+              "kind": "struct",
+              "class": "CmdHeroPowerData"
+            }
+          },
+          "offset": "0x60",
+          "inferred": true
+        },
+        {
+          "tag": 11,
+          "name": "mSkinCollectionRight",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "int"
+            },
+            "value": {
+              "kind": "struct",
+              "class": "CmdSkinCollectionRight"
+            }
+          },
+          "offset": "0x68",
+          "inferred": true
+        }
+      ]
+    },
+    "0x7000a451": {
+      "class": "Cmd_Hero_GetFreeHeros_SC",
+      "fields": [
+        {
+          "tag": 0,
+          "name": "vHeroList",
+          "type": {
+            "kind": "list",
+            "of": {
+              "kind": "int"
+            }
+          },
+          "offset": "0x10",
+          "inferred": true
+        },
+        {
+          "tag": 1,
+          "name": "vHeroForbid",
+          "type": {
+            "kind": "list",
+            "of": {
+              "kind": "int"
+            }
+          },
+          "offset": "0x18",
+          "inferred": true
+        },
+        {
+          "tag": 2,
+          "name": "mDisableHeroWithReason",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "int"
+            },
+            "value": {
+              "kind": "string"
+            }
+          },
+          "offset": "0x20",
+          "inferred": true
+        },
+        {
+          "tag": 3,
+          "name": "mReasonText",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "string"
+            }
+          },
+          "offset": "0x28",
+          "inferred": true
+        },
+        {
+          "tag": 4,
+          "name": "iFreeHeroType",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x30",
+          "inferred": true
+        }
+      ]
+    },
+    "0x7000a651": {
+      "class": "Cmd_Hero_GetHeroFace_SC",
+      "fields": [
+        {
+          "tag": 0,
+          "name": "vFaceBorder",
+          "type": {
+            "kind": "list",
+            "of": {
+              "kind": "int"
+            }
+          },
+          "offset": "0x10",
+          "inferred": true
+        },
+        {
+          "tag": 1,
+          "name": "vAllFaceBorder",
+          "type": {
+            "kind": "list",
+            "of": {
+              "kind": "struct",
+              "class": "CmdFaceBorderData"
+            }
+          },
+          "offset": "0x18",
+          "inferred": true
+        },
+        {
+          "tag": 2,
+          "name": "vFaceIDList",
+          "type": {
+            "kind": "list",
+            "of": {
+              "kind": "struct",
+              "class": "CmdAntiCOVID19Face"
+            }
+          },
+          "offset": "0x20",
+          "inferred": true
+        },
+        {
+          "tag": 3,
+          "name": "vFaceBorderIDList",
+          "type": {
+            "kind": "list",
+            "of": {
+              "kind": "struct",
+              "class": "CmdAntiCOVID19FaceBorder"
+            }
+          },
+          "offset": "0x28",
+          "inferred": true
+        }
+      ]
+    },
+    "0x7000aa51": {
+      "class": "Cmd_Hero_GetBattlePerformance_SC",
+      "fields": [
+        {
+          "tag": 0,
+          "name": "mapBattlePerformance",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "int"
+            },
+            "value": {
+              "kind": "struct",
+              "class": "CmdBattlePerformance"
+            }
+          },
+          "offset": "0x10",
+          "inferred": true
+        },
+        {
+          "tag": 1,
+          "name": "mAllBattlePerformance",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "int"
+            },
+            "value": {
+              "kind": "struct",
+              "class": "OneTypeBattlePerformance"
+            }
+          },
+          "offset": "0x18",
+          "inferred": true
+        },
+        {
+          "tag": 2,
+          "name": "mHeroCurBattlePerformance",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "int"
+            },
+            "value": {
+              "kind": "struct",
+              "class": "HeroCurDressBattlePerformance"
+            }
+          },
+          "offset": "0x20",
+          "inferred": true
+        },
+        {
+          "tag": 3,
+          "name": "mActStarBattlePerformance",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "int"
+            },
+            "value": {
+              "kind": "struct",
+              "class": "OneTypeBattlePerformance"
+            }
+          },
+          "offset": "0x28",
+          "inferred": true
+        },
+        {
+          "tag": 4,
+          "name": "sMd5",
+          "type": {
+            "kind": "string"
+          },
+          "offset": "0x30",
+          "inferred": true
+        }
+      ]
+    },
+    "0x7000ab57": {
+      "class": "Cmd_Friend_Give_BP_Info_SC",
+      "fields": [
+        {
+          "tag": 0,
+          "name": "iRcvTimes",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x10",
+          "inferred": true
+        },
+        {
+          "tag": 1,
+          "name": "vGiveBP",
+          "type": {
+            "kind": "list",
+            "of": {
+              "kind": "struct",
+              "class": "CmdRoleKey"
+            }
+          },
+          "offset": "0x18",
+          "inferred": true
+        },
+        {
+          "tag": 2,
+          "name": "iGiveTimesMax",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x20",
+          "inferred": true
+        },
+        {
+          "tag": 3,
+          "name": "iRcvTimesMax",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x24",
+          "inferred": true
+        },
+        {
+          "tag": 4,
+          "name": "iTakeNum",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x28",
+          "inferred": true
+        }
+      ]
+    },
+    "0x7000be4e": {
+      "class": "Cmd_Login_GetLangAndCodeRepair_SC",
+      "fields": [
+        {
+          "tag": 0,
+          "name": "vServerDataStr",
+          "type": {
+            "kind": "list",
+            "of": {
+              "kind": "struct",
+              "class": "CmdServerUpdateStr"
+            }
+          },
+          "offset": "0x10",
+          "inferred": true
+        },
+        {
+          "tag": 1,
+          "name": "vServerDataStrDel",
+          "type": {
+            "kind": "list",
+            "of": {
+              "kind": "int"
+            }
+          },
+          "offset": "0x18",
+          "inferred": true
+        },
+        {
+          "tag": 2,
+          "name": "iServerDataStrTimestamp",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x20",
+          "inferred": true
+        },
+        {
+          "tag": 3,
+          "name": "mLuaCodeFromServer",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "string"
+            },
+            "value": {
+              "kind": "string"
+            }
+          },
+          "offset": "0x28",
+          "inferred": true
+        },
+        {
+          "tag": 4,
+          "name": "stLuaCodeFromServerIncrUpdate",
+          "type": {
+            "kind": "struct",
+            "class": "LuaCodeRefresh"
+          },
+          "offset": "0x30",
+          "inferred": true
+        }
+      ]
+    },
+    "0x7000c44e": {
+      "class": "Cmd_WeakNet_Test_SC",
+      "fields": [
+        {
+          "tag": 0,
+          "name": "iTimeStampMS",
+          "type": {
+            "kind": "int64"
+          },
+          "offset": "0x10",
+          "inferred": true
+        }
+      ]
+    },
+    "0x7000c54f": {
+      "class": "Cmd_Role_GetFastChat_SC",
+      "fields": [
+        {
+          "tag": 0,
+          "name": "mapFastChat",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "int"
+            },
+            "value": {
+              "kind": "struct",
+              "class": "CmdFastChat"
+            }
+          },
+          "offset": "0x10",
+          "inferred": true
+        },
+        {
+          "tag": 1,
+          "name": "vHaveFastChatId",
+          "type": {
+            "kind": "list",
+            "of": {
+              "kind": "int"
+            }
+          },
+          "offset": "0x18",
+          "inferred": true
+        }
+      ]
+    },
+    "0x7000ca62": {
+      "class": "Cmd_LBSMMR_Info_SC",
+      "fields": [
+        {
+          "tag": 0,
+          "name": "mHeroMMR",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "int"
+            },
+            "value": {
+              "kind": "struct",
+              "class": "HeroMMRNew"
+            }
+          },
+          "offset": "0x10",
+          "inferred": true
+        }
+      ]
+    },
+    "0x7000ca65": {
+      "class": "Cmd_GetClientLogReportSwitch_SC",
+      "fields": [
+        {
+          "tag": 0,
+          "name": "mSwitches",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "int"
+            },
+            "value": {
+              "kind": "struct",
+              "class": "ClientLogReportSwitch"
+            }
+          },
+          "offset": "0x10",
+          "inferred": true
+        }
+      ]
+    },
+    "0x7000cb94": {
+      "class": "Cmd_Act_ThreadBind_getThreadBindData_SC",
+      "fields": [
+        {
+          "tag": 0,
+          "name": "iActivityId",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x10",
+          "inferred": true
+        },
+        {
+          "tag": 1,
+          "name": "vThreadBind",
+          "type": {
+            "kind": "list",
+            "of": {
+              "kind": "struct",
+              "class": "ActThreadBindThreadBindConfig"
+            }
+          },
+          "offset": "0x18",
+          "inferred": true
+        }
+      ]
+    },
+    "0x7000ce5e": {
+      "class": "Cmd_Live_GetFocusList_SC",
+      "fields": [
+        {
+          "tag": 0,
+          "name": "iIndex",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x10",
+          "inferred": true
+        },
+        {
+          "tag": 1,
+          "name": "vRoleInfo",
+          "type": {
+            "kind": "list",
+            "of": {
+              "kind": "struct",
+              "class": "FriendBaseInfo"
+            }
+          },
+          "offset": "0x18",
+          "inferred": true
+        },
+        {
+          "tag": 2,
+          "name": "stLiveInfo",
+          "type": {
+            "kind": "struct",
+            "class": "RoleLiveInfo"
+          },
+          "offset": "0x20",
+          "inferred": true
+        },
+        {
+          "tag": 3,
+          "name": "vSubscibes",
+          "type": {
+            "kind": "list",
+            "of": {
+              "kind": "struct",
+              "class": "CmdRoleKey"
+            }
+          },
+          "offset": "0x28",
+          "inferred": true
+        },
+        {
+          "tag": 4,
+          "name": "iFocusMaxCount",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x30",
+          "inferred": true
+        },
+        {
+          "tag": 5,
+          "name": "iFocusExtraMaxCount",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x34",
+          "inferred": true
+        },
+        {
+          "tag": 6,
+          "name": "mFriendBaseInfo",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "struct",
+              "class": "CmdRoleKey"
+            },
+            "value": {
+              "kind": "struct",
+              "class": "FriendBaseInfo"
+            }
+          },
+          "offset": "0x38",
+          "inferred": true
+        },
+        {
+          "tag": 7,
+          "name": "bNewFriendCache",
+          "type": {
+            "kind": "bool"
+          },
+          "offset": "0x40",
+          "inferred": true
+        },
+        {
+          "tag": 8,
+          "name": "vFocusList",
+          "type": {
+            "kind": "list",
+            "of": {
+              "kind": "struct",
+              "class": "CmdRoleKey"
+            }
+          },
+          "offset": "0x48",
+          "inferred": true
+        },
+        {
+          "tag": 9,
+          "name": "mRawFriendBaseInfo",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "struct",
+              "class": "CmdRoleKey"
+            },
+            "value": {
+              "kind": "struct",
+              "class": "FriendRawBaseInfo"
+            }
+          },
+          "offset": "0x50",
+          "inferred": true
+        }
+      ]
+    },
+    "0x7000d05e": {
+      "class": "Cmd_Live_GetFansList_SC",
+      "fields": [
+        {
+          "tag": 0,
+          "name": "iIndex",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x10",
+          "inferred": true
+        },
+        {
+          "tag": 1,
+          "name": "vRoleInfo",
+          "type": {
+            "kind": "list",
+            "of": {
+              "kind": "struct",
+              "class": "FriendBaseInfo"
+            }
+          },
+          "offset": "0x18",
+          "inferred": true
+        },
+        {
+          "tag": 2,
+          "name": "iType",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x20",
+          "inferred": true
+        },
+        {
+          "tag": 3,
+          "name": "stLiveInfo",
+          "type": {
+            "kind": "struct",
+            "class": "RoleLiveInfo"
+          },
+          "offset": "0x28",
+          "inferred": true
+        },
+        {
+          "tag": 4,
+          "name": "ulUid",
+          "type": {
+            "kind": "int64"
+          },
+          "offset": "0x30",
+          "inferred": true
+        },
+        {
+          "tag": 5,
+          "name": "uiSvrId",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x38",
+          "inferred": true
+        },
+        {
+          "tag": 6,
+          "name": "vRankChange",
+          "type": {
+            "kind": "list",
+            "of": {
+              "kind": "struct",
+              "class": "RankChangeInfo"
+            }
+          },
+          "offset": "0x40",
+          "inferred": true
+        },
+        {
+          "tag": 7,
+          "name": "uiResetTime",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x48",
+          "inferred": true
+        }
+      ]
+    },
+    "0x7000d195": {
+      "class": "Cmd_Ping_GetAllServerIp_SC",
+      "fields": [
+        {
+          "tag": 0,
+          "name": "vSvrList",
+          "type": {
+            "kind": "list",
+            "of": {
+              "kind": "struct",
+              "class": "ServerGroupInfo"
+            }
+          },
+          "offset": "0x10",
+          "inferred": true
+        },
+        {
+          "tag": 1,
+          "name": "sMd5",
+          "type": {
+            "kind": "string"
+          },
+          "offset": "0x18",
+          "inferred": true
+        }
+      ]
+    },
+    "0x7000db94": {
+      "class": "Cmd_Battle_ReconnectInfo_SC",
+      "fields": [
+        {
+          "tag": 0,
+          "name": "uiBattleID",
+          "type": {
+            "kind": "int64"
+          },
+          "offset": "0x10",
+          "inferred": true
+        },
+        {
+          "tag": 1,
+          "name": "strBattleIP",
+          "type": {
+            "kind": "string"
+          },
+          "offset": "0x18",
+          "inferred": true
+        },
+        {
+          "tag": 2,
+          "name": "uiBattlePort",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x20",
+          "inferred": true
+        },
+        {
+          "tag": 3,
+          "name": "sBattleProxy",
+          "type": {
+            "kind": "string"
+          },
+          "offset": "0x28",
+          "inferred": true
+        },
+        {
+          "tag": 4,
+          "name": "uiProxyId",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x30",
+          "inferred": true
+        },
+        {
+          "tag": 5,
+          "name": "uiProxyPing",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x34",
+          "inferred": true
+        },
+        {
+          "tag": 6,
+          "name": "sBattleConn",
+          "type": {
+            "kind": "string"
+          },
+          "offset": "0x38",
+          "inferred": true
+        },
+        {
+          "tag": 7,
+          "name": "bUseRUdp",
+          "type": {
+            "kind": "bool"
+          },
+          "offset": "0x40",
+          "inferred": true
+        },
+        {
+          "tag": 8,
+          "name": "iRUdpOption",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x44",
+          "inferred": true
+        },
+        {
+          "tag": 9,
+          "name": "iUdpBlackListType",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x48",
+          "inferred": true
+        },
+        {
+          "tag": 10,
+          "name": "strBattleIPForUdpDual",
+          "type": {
+            "kind": "string"
+          },
+          "offset": "0x50",
+          "inferred": true
+        },
+        {
+          "tag": 11,
+          "name": "uiBattlePortForUdpDual",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x58",
+          "inferred": true
+        },
+        {
+          "tag": 12,
+          "name": "uiBattleSvrId",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x5c",
+          "inferred": true
+        },
+        {
+          "tag": 13,
+          "name": "iPvpType",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x60",
+          "inferred": true
+        },
+        {
+          "tag": 14,
+          "name": "strBattleProxyIP",
+          "type": {
+            "kind": "string"
+          },
+          "offset": "0x68",
+          "inferred": true
+        },
+        {
+          "tag": 15,
+          "name": "uiBattleProxyPort",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x70",
+          "inferred": true
+        },
+        {
+          "tag": 16,
+          "name": "strBattleProxyIPForUdp",
+          "type": {
+            "kind": "string"
+          },
+          "offset": "0x78",
+          "inferred": true
+        },
+        {
+          "tag": 17,
+          "name": "uiBattleProxyPortForUdp",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x80",
+          "inferred": true
+        },
+        {
+          "tag": 18,
+          "name": "uiBattleProxyStrategy",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x84",
+          "inferred": true
+        },
+        {
+          "tag": 19,
+          "name": "sBattleConnectSessionKey",
+          "type": {
+            "kind": "string"
+          },
+          "offset": "0x88",
+          "inferred": true
+        },
+        {
+          "tag": 20,
+          "name": "sIpListForUseTcpConnEasy",
+          "type": {
+            "kind": "string"
+          },
+          "offset": "0x90",
+          "inferred": true
+        },
+        {
+          "tag": 21,
+          "name": "vBattleProxyIpList",
+          "type": {
+            "kind": "list",
+            "of": {
+              "kind": "string"
+            }
+          },
+          "offset": "0x98",
+          "inferred": true
+        },
+        {
+          "tag": 22,
+          "name": "vBattleProxyPortList",
+          "type": {
+            "kind": "list",
+            "of": {
+              "kind": "int"
+            }
+          },
+          "offset": "0xa0",
+          "inferred": true
+        },
+        {
+          "tag": 23,
+          "name": "bUseInterlligentProxy",
+          "type": {
+            "kind": "bool"
+          },
+          "offset": "0xa8",
+          "inferred": true
+        },
+        {
+          "tag": 24,
+          "name": "uiThisLoginTime",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0xac",
+          "inferred": true
+        },
+        {
+          "tag": 25,
+          "name": "bBattleFault",
+          "type": {
+            "kind": "bool"
+          },
+          "offset": "0xb0",
+          "inferred": true
+        },
+        {
+          "tag": 26,
+          "name": "uiProxyUseType",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0xb4",
+          "inferred": true
+        },
+        {
+          "tag": 27,
+          "name": "sClientMCNetConfig",
+          "type": {
+            "kind": "string"
+          },
+          "offset": "0xb8",
+          "inferred": true
+        },
+        {
+          "tag": 28,
+          "name": "vBattleGateConnInfo",
+          "type": {
+            "kind": "list",
+            "of": {
+              "kind": "struct",
+              "class": "SBattleGateConnInfo"
+            }
+          },
+          "offset": "0xc0",
+          "inferred": true
+        },
+        {
+          "tag": 29,
+          "name": "iCause",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0xc8",
+          "inferred": true
+        },
+        {
+          "tag": 30,
+          "name": "vInterlligentProxyList",
+          "type": {
+            "kind": "list",
+            "of": {
+              "kind": "string"
+            }
+          },
+          "offset": "0xd0",
+          "inferred": true
+        }
+      ]
+    },
+    "0x7000de56": {
+      "class": "Cmd_Rune_GetAllData_SC",
+      "fields": [
+        {
+          "tag": 0,
+          "name": "vecItems",
+          "type": {
+            "kind": "list",
+            "of": {
+              "kind": "struct",
+              "class": "RuneItem"
+            }
+          },
+          "offset": "0x10",
+          "inferred": true
+        },
+        {
+          "tag": 1,
+          "name": "vecPages",
+          "type": {
+            "kind": "list",
+            "of": {
+              "kind": "struct",
+              "class": "RunePage"
+            }
+          },
+          "offset": "0x18",
+          "inferred": true
+        },
+        {
+          "tag": 2,
+          "name": "vUnLockRuneSkillId",
+          "type": {
+            "kind": "list",
+            "of": {
+              "kind": "int"
+            }
+          },
+          "offset": "0x20",
+          "inferred": true
+        },
+        {
+          "tag": 3,
+          "name": "mHeroRune",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "int"
+            },
+            "value": {
+              "kind": "struct",
+              "class": "BatchPageRune"
+            }
+          },
+          "offset": "0x28",
+          "inferred": true
+        }
+      ]
+    },
+    "0x7000e794": {
+      "class": "Cmd_Battle_ShareRewardInfo_SC",
+      "fields": [
+        {
+          "tag": 0,
+          "name": "mapInfo",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "int"
+            },
+            "value": {
+              "kind": "int"
+            }
+          },
+          "offset": "0x10",
+          "inferred": true
+        },
+        {
+          "tag": 1,
+          "name": "uiShareFailedMaxNum",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x18",
+          "inferred": true
+        }
+      ]
+    },
+    "0x7000f256": {
+      "class": "Cmd_Skill_GetAllData_SC",
+      "fields": [
+        {
+          "tag": 0,
+          "name": "vSkill",
+          "type": {
+            "kind": "list",
+            "of": {
+              "kind": "int"
+            }
+          },
+          "offset": "0x10",
+          "inferred": true
+        }
+      ]
+    },
+    "0x7000f8d5": {
+      "class": "Cmd_Individual_GetList_SC",
+      "fields": [
+        {
+          "tag": 0,
+          "name": "uiPVPType",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x10",
+          "inferred": true
+        },
+        {
+          "tag": 1,
+          "name": "vCommanderList",
+          "type": {
+            "kind": "list",
+            "of": {
+              "kind": "struct",
+              "class": "CmdIndividualCommander"
+            }
+          },
+          "offset": "0x18",
+          "inferred": true
+        },
+        {
+          "tag": 2,
+          "name": "vCommanderSkinList",
+          "type": {
+            "kind": "list",
+            "of": {
+              "kind": "struct",
+              "class": "CmdIndividualCommanderSkin"
+            }
+          },
+          "offset": "0x20",
+          "inferred": true
+        },
+        {
+          "tag": 3,
+          "name": "uiCommanderIDChoose",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x28",
+          "inferred": true
+        },
+        {
+          "tag": 4,
+          "name": "mCommanderSkillIDChoose",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "int"
+            },
+            "value": {
+              "kind": "int"
+            }
+          },
+          "offset": "0x30",
+          "inferred": true
+        },
+        {
+          "tag": 5,
+          "name": "uiCommanderExpDoubleNum",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x38",
+          "inferred": true
+        },
+        {
+          "tag": 6,
+          "name": "uiCommanderExpDoubleTime",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x3c",
+          "inferred": true
+        },
+        {
+          "tag": 7,
+          "name": "mCommanderLimitFreeSkinID",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "int"
+            },
+            "value": {
+              "kind": "int"
+            }
+          },
+          "offset": "0x40",
+          "inferred": true
+        },
+        {
+          "tag": 8,
+          "name": "vSkinAnimationList",
+          "type": {
+            "kind": "list",
+            "of": {
+              "kind": "struct",
+              "class": "CmdIndividualCommanderAnimation"
+            }
+          },
+          "offset": "0x48",
+          "inferred": true
+        },
+        {
+          "tag": 9,
+          "name": "vMapList",
+          "type": {
+            "kind": "list",
+            "of": {
+              "kind": "struct",
+              "class": "CmdIndividualMap"
+            }
+          },
+          "offset": "0x50",
+          "inferred": true
+        },
+        {
+          "tag": 10,
+          "name": "vMapSkinList",
+          "type": {
+            "kind": "list",
+            "of": {
+              "kind": "struct",
+              "class": "CmdIndividualMapSkin"
+            }
+          },
+          "offset": "0x58",
+          "inferred": true
+        },
+        {
+          "tag": 11,
+          "name": "uiMapIDChoose",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x60",
+          "inferred": true
+        },
+        {
+          "tag": 12,
+          "name": "vEffectList",
+          "type": {
+            "kind": "list",
+            "of": {
+              "kind": "struct",
+              "class": "CmdIndividualEffect"
+            }
+          },
+          "offset": "0x68",
+          "inferred": true
+        },
+        {
+          "tag": 13,
+          "name": "mChessSkin",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "int"
+            },
+            "value": {
+              "kind": "struct",
+              "class": "CmdIndividualChessSkin"
+            }
+          },
+          "offset": "0x70",
+          "inferred": true
+        },
+        {
+          "tag": 14,
+          "name": "uiAutoSelectExpireTime",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x78",
+          "inferred": true
+        },
+        {
+          "tag": 15,
+          "name": "mCommanderLimitFreeLevel",
+          "type": {
+            "kind": "map",
+            "key": {
+              "kind": "int"
+            },
+            "value": {
+              "kind": "int"
+            }
+          },
+          "offset": "0x80",
+          "inferred": true
+        },
+        {
+          "tag": 16,
+          "name": "vSkinEffectList",
+          "type": {
+            "kind": "list",
+            "of": {
+              "kind": "struct",
+              "class": "CmdIndividualCommanderSkinEffect"
+            }
+          },
+          "offset": "0x88",
+          "inferred": true
+        },
+        {
+          "tag": 17,
+          "name": "uiCommanderExpCardNum",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x90",
+          "inferred": true
+        },
+        {
+          "tag": 18,
+          "name": "uiWeekMCCoin",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x94",
+          "inferred": true
+        },
+        {
+          "tag": 19,
+          "name": "uiWeekMCCoinLimit",
+          "type": {
+            "kind": "int"
+          },
+          "offset": "0x98",
+          "inferred": true
+        }
+      ]
+    }
+  }
+}

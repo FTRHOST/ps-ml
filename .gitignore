@@ -1,0 +1,25 @@
+# --- Data pribadi / hasil capture (PRD NF-3, CLAUDE.md butir 4) ---
+captures/
+relay-captures/
+unhandled/
+mlbb_captured_tags/
+state/
+*.session.json
+
+# --- Artefak dump & APK yang tidak boleh di-commit ---
+dump.cs
+*.apk
+*.aab
+
+# --- Build & dependensi ---
+node_modules/
+dist/
+*.log
+
+# --- OS / editor ---
+.DS_Store
+.idea/
+.vscode/
+__pycache__/
+*.pyc
+.venv/
