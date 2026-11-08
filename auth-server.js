@@ -97,8 +97,8 @@ function buildColdStartReject(seq = 0x01) {
 
 function buildLoginAuthSC(
   seq,
-  accountId = 99999999,
-  zoneId = 57102,
+  accountId = 1,
+  zoneId = 1,
   zoneName = "petwirkepo",
 ) {
   const sdpParts = [];
@@ -145,9 +145,9 @@ function buildLoginAuthSC(
     packInt(2, 0), // Tag 2: iAreaTag
     packInt(3, 1), // Tag 3: bChangeName
     packInt(4, 4), // Tag 4: iCreateRoleAreaTag
-    packInt(5, 999), // Tag 5: iLevel (Misal: Level 1)
+    packInt(5, 1), // Tag 5: iLevel (Misal: Level 1)
     packInt(6, 0), // Tag 6: iForceChangeAreaTagReason
-    packString(7, "ID"), // Tag 7: sCreateRoleCountry
+    packString(7, "HK"), // Tag 7: sCreateRoleCountry
 
     // vABTestExpParam (List kosong di dalam struct: Type 5, Tag 8)
     Buffer.concat([writeTag(8, 5), Buffer.from([0x00])]),

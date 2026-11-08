@@ -135,9 +135,7 @@ const NO_REPLY = new Set([
  * berhenti di "Retrieving data" lalu kembali ke lobby.
  * Nilai: opcode request -> daftar opcode push yang diambil dari cache.
  */
-const PUSH_AFTER = new Map([
-  [0x70009f4f, [0x7000b04f]],
-]);
+const PUSH_AFTER = new Map([[0x70009f4f, [0x7000b04f]]]);
 
 /** Port yang didengarkan (dipisah koma, lihat catatan protokol di atas). */
 function parsePorts(value, fallback) {
@@ -341,8 +339,7 @@ function patchTopLevelField(bodyBuf, fieldTag, value) {
   const nodes = sdp.decode(bodyBuf);
   const out = nodes.slice();
   const idx = out.findIndex(
-    (n) =>
-      n.tag === fieldTag && (n.type === sdp.T.INT || n.type === sdp.T.NEG),
+    (n) => n.tag === fieldTag && (n.type === sdp.T.INT || n.type === sdp.T.NEG),
   );
   if (idx >= 0) {
     out[idx] = { ...out[idx], type: sdp.T.INT, v: BigInt(value) };
@@ -475,9 +472,7 @@ function handleZoneOpcode(sock, opcode, seq, label, raw) {
     // Klien menyegarkan info role lewat opcode ini; tanpa patch, level kembali
     // ke nilai capture lama.
     body = patchField(body || entry.body, LEVEL_TAG, LEVEL);
-    console.log(
-      `[${label}] override iLevel=${LEVEL} pada Cmd_Role_GetInfo_SC`,
-    );
+    console.log(`[${label}] override iLevel=${LEVEL} pada Cmd_Role_GetInfo_SC`);
   }
   sock.write(renderFrame(entry, seq, body));
 
@@ -488,7 +483,9 @@ function handleZoneOpcode(sock, opcode, seq, label, raw) {
     for (const pushOpcode of pushes) {
       const pushEntry = REPLAY_CACHE.get(hex32(pushOpcode));
       if (!pushEntry) continue;
-      console.log(`[${label}] push ${hex32(pushOpcode)} setelah ${hex32(opcode)}`);
+      console.log(
+        `[${label}] push ${hex32(pushOpcode)} setelah ${hex32(opcode)}`,
+      );
       setTimeout(() => {
         if (!sock.destroyed) sock.write(renderFrame(pushEntry, seq));
       }, 80);
@@ -558,18 +555,14 @@ function makeAuthHandler(sock, label) {
         const packet = buf.subarray(0, total);
         buf = buf.subarray(total);
         const inner = probeUnpack(packet);
-        if (!inner) {
-          // Payload bukan zstd: perlakukan sebagai probe Cold Start.
+        const parsed = inner ? probeParseInner(inner) : null;
+        if (!parsed) {
+          // Non-zstd ATAU zstd valid tapi tanpa header 0x46 -> Cold Start probe.
           console.log(
-            `[${label}] Cold Start probe -> tolak -45 (Session Expired)`,
+            `[${label}] Cold Start probe (${total}B, inner=${inner ? inner.toString("hex") : "non-zstd"}) -> tolak -45 (Session Expired)`,
           );
           sock.write(buildColdStartReject(0x01), () => sock.end());
           return;
-        }
-        const parsed = probeParseInner(inner);
-        if (!parsed) {
-          console.log(`[${label}] probe tidak bisa diurai -> diabaikan`);
-          continue;
         }
         console.log(
           `[${label}] RECV ${hex32(parsed.opcode)} seq=${parsed.seq} len=${total} (zstd)`,
@@ -655,7 +648,9 @@ async function main() {
   console.log("   ColdStart : Handled (-45 Session Expired)");
   console.log("   CDN Mode  : Official Moonton CDN");
   console.log("====================================================");
-  console.log(`[SERVER] Server index aktif. MODE=${MODE} DIAMOND=${DIAMOND} LEVEL=${LEVEL}`);
+  console.log(
+    `[SERVER] Server index aktif. MODE=${MODE} DIAMOND=${DIAMOND} LEVEL=${LEVEL}`,
+  );
 }
 
 if (require.main === module) {
