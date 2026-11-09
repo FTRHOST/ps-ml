@@ -1,6 +1,9 @@
 const net = require("net");
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
+const sdp = require("./sdp");
+const { DatabaseSync } = require("node:sqlite");
 
 /**
  * MLBB Standalone Server
@@ -95,79 +98,359 @@ function buildColdStartReject(seq = 0x01) {
   return frame;
 }
 
-function buildLoginAuthSC(
-  seq,
-  accountId = 1,
-  zoneId = 1,
-  zoneName = "petwirkepo",
-) {
-  const sdpParts = [];
-  sdpParts.push(Buffer.from([0x70])); // StructBegin
+// ----------------------------------------------------
+// 2b. LOGIN AUTH (Cmd_Login_Auth_CS -> Cmd_Login_Auth_SC)
+// ----------------------------------------------------
 
-  // Tag 0: iAccountId
-  sdpParts.push(packInt(0, accountId));
+/**
+ * Peta field MsgCmd_Login_Auth_CS -> nomor tag SDP.
+ * Field pertama di dump.cs (sAccountName, offset 0x10) memakai tag 0 dan
+ * nomor tag naik satu per field declaration. Tipe: 4 = string, 0 = int,
+ * 7 = struct; bool disimpan sebagai int.
+ */
+const CS_TAG_FIELDS = [
+  { tag: 0, field: "sAccountName", type: "string" },
+  { tag: 1, field: "sAuthKey", type: "string" },
+  { tag: 2, field: "sClientVersion", type: "string" },
+  { tag: 3, field: "sChannel", type: "string" },
+  { tag: 4, field: "sOSLanguage", type: "string" },
+  { tag: 5, field: "iOSType", type: "int" },
+  { tag: 6, field: "mMiscData", type: "string" },
+  { tag: 7, field: "iLocalZoneId", type: "int" },
+  { tag: 8, field: "iRegionId", type: "int" },
+  { tag: 9, field: "sCountry", type: "string" },
+  { tag: 10, field: "sUserIP", type: "string" },
+  { tag: 11, field: "uiCreateAlt", type: "int" },
+  { tag: 12, field: "uiConfirmNotOverrideFromZing", type: "int" },
+  { tag: 13, field: "sUnityVersion", type: "string" },
+  { tag: 14, field: "sDeviceInfo", type: "string" },
+  { tag: 15, field: "mIDFAData", type: "string" },
+  { tag: 16, field: "stReportInfo", type: "struct" },
+  { tag: 17, field: "bUnbindDeviceId", type: "bool" },
+  { tag: 18, field: "iRoleZoneId", type: "int" },
+  { tag: 19, field: "stDidReqParam", type: "struct" },
+  { tag: 20, field: "sDeviceId", type: "string" },
+  { tag: 21, field: "sThisLoginDeviceUniqueId", type: "string" },
+  { tag: 22, field: "sThisLoginDevice", type: "string" },
+  { tag: 23, field: "sThisLoginOSLanguage", type: "string" },
+  { tag: 24, field: "iThisLanguageId", type: "int" },
+  { tag: 25, field: "iSwitchVersion", type: "int" },
+  { tag: 26, field: "sLoginAccToken", type: "string" },
+  { tag: 27, field: "sMd5", type: "string" },
+  { tag: 28, field: "iLoginId", type: "int" },
+  { tag: 29, field: "iClientTransferSource", type: "int" },
+  { tag: 30, field: "sAppUuid", type: "string" },
+  { tag: 31, field: "sAppClickId", type: "string" },
+  { tag: 32, field: "iMagic", type: "int" },
+  { tag: 33, field: "mNetEaseVerify", type: "string" },
+  { tag: 34, field: "bNetEaseVerifyPass", type: "bool" },
+  { tag: 35, field: "sInitInfo", type: "string" },
+  { tag: 36, field: "iSrcAppType", type: "int" },
+  { tag: 37, field: "iDeviceLevel", type: "int" },
+  { tag: 38, field: "bForceCreateAccount", type: "bool" },
+];
 
-  // Tag 1: sSessionKey
-  const sessionKey = "fs3c9d921a6cfd44c62259f88f";
-  sdpParts.push(packString(1, sessionKey));
+/** Cari definisi field Cmd_Login_Auth_CS per nomor tag SDP. */
+function csFieldDef(tag) {
+  return CS_TAG_FIELDS.find((c) => c.tag === tag);
+}
 
-  // Tag 2: stZone (CmdZoneInfo)
-  sdpParts.push(
-    Buffer.concat([
-      Buffer.from([0x72]), // StructBegin dengan Tag 2 (0x70 | 2)
-      packInt(0, zoneId),
-      packString(1, zoneName),
-      packInt(2, 1),
-      Buffer.from([0x80]), // StructEnd
-    ]),
+/**
+ * Cmd_Login_Auth_CS: paket dari client (Cmd_Login_Auth_CS, opcode 0x70000101)
+ * setelah diurai dari body SDP. Field yang tidak ada di body hanya diisi
+ * default kosong, supaya pemanggilan dari field lain tetap aman.
+ */
+class Cmd_Login_Auth_CS {
+  constructor() {
+    this.sAccountName = "";
+    this.sAuthKey = "";
+    this.sClientVersion = "";
+    this.sChannel = "";
+    this.sOSLanguage = "";
+    this.iOSType = 0;
+    this.mMiscData = "";
+    this.iLocalZoneId = 0;
+    this.iRegionId = 0;
+    this.sCountry = "";
+    this.sUserIP = "";
+    this.uiCreateAlt = 0;
+    this.uiConfirmNotOverrideFromZing = 0;
+    this.sUnityVersion = "";
+    this.sDeviceInfo = "";
+    this.bUnbindDeviceId = false;
+    this.iRoleZoneId = 0;
+    this.sDeviceId = "";
+    this.sLoginAccToken = "";
+    this.sMd5 = "";
+    this.iLoginId = 0;
+    this.iClientTransferSource = 0;
+    this.sAppUuid = "";
+    this.sAppClickId = "";
+    this.iMagic = 0;
+    this.bForceCreateAccount = false;
+  }
+
+  /**
+   * Urai body SDP menjadi instance Cmd_Login_Auth_CS.
+   * Body berbentuk root struct (tag 0) + StructEnd.
+   */
+  static fromSdpBody(body) {
+    const cs = new Cmd_Login_Auth_CS();
+    if (!body) return cs;
+    let nodes;
+    try {
+      nodes = sdp.decode(body);
+    } catch (_) {
+      return cs;
+    }
+    const root = nodes[0];
+    if (!root || root.type !== sdp.T.STRUCT) return cs;
+    for (const f of root.fields) {
+      const def = csFieldDef(f.tag);
+      if (!def) continue;
+      if (def.type === "string") {
+        cs[def.field] = f.type === sdp.T.STRING ? f.raw.toString("utf8") : "";
+      } else if (def.type === "int" || def.type === "bool") {
+        cs[def.field] = f.type === sdp.T.INT || f.type === sdp.T.NEG ? Number(f.v) : 0;
+      }
+    }
+    return cs;
+  }
+}
+
+/**
+ * Cmd_Login_Auth_SC: paket response untuk Cmd_Login_Auth_CS.
+ * Field dipilih dari akun (hasil lookup database/toko auth) supaya respons
+ * menyesuaikan auth client yang sebenarnya.
+ */
+class Cmd_Login_Auth_SC {
+  constructor(account = DEFAULT_LOGIN_AUTH_ACCOUNT) {
+    this.iAccountId = account.iAccountId ?? 1n;
+    this.sSessionKey = account.sSessionKey ?? "fs3c9d921a6cfd44c62259f88f";
+    this.stZone = account.stZone || {
+      iZoneId: 1,
+      sZoneName: "petwirkepo",
+      iStatus: 1,
+      iFlag: 0,
+    };
+    this.vAccountInfo = account.vAccountInfo || [];
+    this.sUserIP = account.sUserIP || "";
+    this.sAccountName = account.sAccountName || "";
+    this.sCountry = account.sCountry || "";
+    this.iServerTimeMS = account.iServerTimeMS ?? BigInt(Date.now());
+    this.bLocalZoneHasMerged = !!account.bLocalZoneHasMerged;
+    this.bNewAccount =
+      account.bNewAccount !== undefined ? !!account.bNewAccount : true;
+    this.iAccountFlag = account.iAccountFlag ?? 2;
+    this.uiCreateAlt = account.uiCreateAlt ?? 0;
+    this.sIsp = account.sIsp || "";
+    this.iAccCreateTime = account.iAccCreateTime ?? 1793530475;
+    this.vSimpleRoleInfo = account.vSimpleRoleInfo || [];
+    this.iTimeGmtOff = account.iTimeGmtOff ?? 0n;
+  }
+
+  /** Bungkus field akun menjadi body SDP untuk Cmd_Login_Auth_SC. */
+  toSdpBody() {
+    const sdpParts = [];
+    sdpParts.push(Buffer.from([0x70])); // StructBegin
+
+    // Tag 0: iAccountId (UInt64 -> BigInt)
+    sdpParts.push(packInt(0, this.iAccountId));
+
+    // Tag 1: sSessionKey
+    sdpParts.push(packString(1, this.sSessionKey));
+
+    // Tag 2: stZone (CmdZoneInfo struct)
+    sdpParts.push(
+      Buffer.concat([
+        Buffer.from([0x72]), // StructBegin dengan Tag 2 (0x70 | 2)
+        packInt(0, this.stZone.iZoneId),
+        packString(1, this.stZone.sZoneName),
+        packInt(2, this.stZone.iStatus),
+        Buffer.from([0x80]), // StructEnd
+      ]),
+    );
+
+    // Tag 3: vAccountInfo (List kosong)
+    sdpParts.push(Buffer.from([0x53, 0x00]));
+
+    // Tag 10: iServerTimeMS (UInt64 -> BigInt)
+    sdpParts.push(packInt(10, this.iServerTimeMS));
+
+    // Tag 11 - 14
+    sdpParts.push(packInt(11, this.bLocalZoneHasMerged ? 1 : 0)); // bLocalZoneHasMerged
+    sdpParts.push(packInt(12, this.bNewAccount ? 1 : 0)); // bNewAccount
+    sdpParts.push(packInt(13, this.iAccountFlag)); // iAccountFlag
+    sdpParts.push(packInt(14, this.uiCreateAlt)); // uiCreateAlt
+
+    // Tag 19: iAccCreateTime
+    sdpParts.push(packInt(19, this.iAccCreateTime));
+
+    // --- TAG 20: vSimpleRoleInfo (List) ---
+    const tag20Header = writeTag(20, 5); // Type 5 = List
+    sdpParts.push(
+      Buffer.concat([
+        tag20Header,
+        Buffer.from([0x01]), // Jumlah item di dalam list
+      ]),
+    );
+
+    sdpParts.push(Buffer.from([0x80, 0x80])); // StructEnd utama
+    return Buffer.concat(sdpParts);
+  }
+}
+
+/**
+ * Akun auth default (legacy) supaya perilaku lama tetap terjaga bila belum
+ * ada akun yang cocok dengan informasi dari Cmd_Login_Auth_CS.
+ */
+const DEFAULT_LOGIN_AUTH_ACCOUNT = {
+  iAccountId: 1n,
+  sSessionKey: "fs3c9d921a6cfd44c62259f88f",
+  stZone: { iZoneId: 1, sZoneName: "petwirkepo", iStatus: 1, iFlag: 0 },
+  vAccountInfo: [],
+  sUserIP: "",
+  sAccountName: "",
+  sCountry: "",
+  bLocalZoneHasMerged: false,
+  bNewAccount: true,
+  iAccountFlag: 2,
+  uiCreateAlt: 0,
+  sIsp: "",
+  iAccCreateTime: 1793530475,
+  vSimpleRoleInfo: [],
+  iTimeGmtOff: 0n,
+};
+
+/**
+ * Database relasional untuk akun auth (SQLite via built-in `node:sqlite`,
+ * tanpa dependensi npm baru). File: state/auth.db (diremote git, bukan bagian repo).
+ * Setiap akun baru otomatis mendapat iAccountId berbeda (AUTOINCREMENT).
+ */
+const AUTH_DB_PATH = path.join(__dirname, "state", "auth.db");
+const AUTH_DB = new DatabaseSync(AUTH_DB_PATH);
+AUTH_DB.exec(`CREATE TABLE IF NOT EXISTS auth_accounts (
+  i_account_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  s_account_name TEXT NOT NULL UNIQUE,
+  s_auth_key TEXT NOT NULL DEFAULT '',
+  s_session_key TEXT NOT NULL,
+  st_zone_id INTEGER,
+  st_zone_name TEXT,
+  st_zone_status INTEGER,
+  st_zone_flag INTEGER,
+  s_country TEXT NOT NULL DEFAULT '',
+  s_user_ip TEXT NOT NULL DEFAULT '',
+  i_acc_create_time INTEGER NOT NULL,
+  b_new_account INTEGER NOT NULL,
+  i_account_flag INTEGER NOT NULL,
+  ui_create_alt INTEGER NOT NULL,
+  i_server_time_ms INTEGER NOT NULL
+);`);
+AUTH_DB.exec(
+  "CREATE INDEX IF NOT EXISTS idx_auth_accounts_auth_key ON auth_accounts (LOWER(s_auth_key));",
+);
+
+/** Ubah baris database (snake_case) menjadi objek akun (camelCase). */
+function authAccountFromRow(row) {
+  return {
+    iAccountId: BigInt(row.i_account_id),
+    sAccountName: row.s_account_name || "",
+    sAuthKey: row.s_auth_key || "",
+    sSessionKey: row.s_session_key,
+    stZone: {
+      iZoneId: row.st_zone_id ?? 1,
+      sZoneName: row.st_zone_name || "",
+      iStatus: row.st_zone_status ?? 1,
+      iFlag: row.st_zone_flag ?? 0,
+    },
+    sCountry: row.s_country || "",
+    sUserIP: row.s_user_ip || "",
+    iAccCreateTime: row.i_acc_create_time ?? 0,
+    bNewAccount: !!row.b_new_account,
+    iAccountFlag: row.i_account_flag ?? 2,
+    uiCreateAlt: row.ui_create_alt ?? 0,
+    iServerTimeMS: row.i_server_time_ms ? BigInt(row.i_server_time_ms) : BigInt(Date.now()),
+  };
+}
+
+/** Daftarkan akun baru ke database auth. */
+function registerAuthAccount(account) {
+  AUTH_DB.prepare(
+    `INSERT INTO auth_accounts (s_account_name, s_auth_key, s_session_key, st_zone_id, st_zone_name, st_zone_status, st_zone_flag, s_country, s_user_ip, i_acc_create_time, b_new_account, i_account_flag, ui_create_alt, i_server_time_ms)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(
+    account.sAccountName || "",
+    account.sAuthKey || "",
+    account.sSessionKey || "",
+    account.stZone ? account.stZone.iZoneId ?? 1 : 1,
+    account.stZone ? account.stZone.sZoneName || "" : "",
+    account.stZone ? account.stZone.iStatus ?? 1 : 1,
+    account.stZone ? account.stZone.iFlag ?? 0 : 0,
+    account.sCountry || "",
+    account.sUserIP || "",
+    account.iAccCreateTime ?? 0,
+    account.bNewAccount ? 1 : 0,
+    account.iAccountFlag ?? 2,
+    account.uiCreateAlt ?? 0,
+    account.iServerTimeMS ? Number(account.iServerTimeMS) : Number(Date.now()),
   );
+}
 
-  // Tag 3: vAccountInfo (List kosong)
-  sdpParts.push(Buffer.from([0x53, 0x00]));
+/** Cari akun dari informasi Cmd_Login_Auth_CS (nama akun -> auth key) di database. */
+function findAuthAccount(cs) {
+  const name = (cs.sAccountName || "").trim().toLowerCase();
+  if (name) {
+    const row = AUTH_DB.prepare(
+      "SELECT * FROM auth_accounts WHERE LOWER(s_account_name) = ? LIMIT 1",
+    ).get(name);
+    if (row) return authAccountFromRow(row);
+  }
+  const authKey = (cs.sAuthKey || "").trim().toLowerCase();
+  if (authKey) {
+    const row = AUTH_DB.prepare(
+      "SELECT * FROM auth_accounts WHERE LOWER(s_auth_key) = ? LIMIT 1",
+    ).get(authKey);
+    if (row) return authAccountFromRow(row);
+  }
+  return null;
+}
 
-  // Tag 10: iServerTimeMS
-  sdpParts.push(packInt(10, BigInt(Date.now())));
-
-  // Tag 11 - 14
-  sdpParts.push(packInt(11, 0)); // bLocalZoneHasMerged
-  sdpParts.push(packInt(12, 1)); // bNewAccount
-  sdpParts.push(packInt(13, 2)); // iAccountFlag
-  sdpParts.push(packInt(14, 0)); // uiCreateAlt
-
-  // Tag 19: iAccCreateTime
-  sdpParts.push(packInt(19, 1793530475));
-
-  // --- TAG 20: vSimpleRoleInfo (List berisi 1 Karakter dengan aman) ---
-  const roleItem = Buffer.concat([
-    Buffer.from([0x70]), // StructBegin untuk SimpleRoleInfo
-    packInt(0, zoneId), // Tag 0: iZoneID
-    packInt(1, 1793530475), // Tag 1: iCreateRoleTime
-    packInt(2, 0), // Tag 2: iAreaTag
-    packInt(3, 1), // Tag 3: bChangeName
-    packInt(4, 4), // Tag 4: iCreateRoleAreaTag
-    packInt(5, 1), // Tag 5: iLevel (Misal: Level 1)
-    packInt(6, 0), // Tag 6: iForceChangeAreaTagReason
-    packString(7, "HK"), // Tag 7: sCreateRoleCountry
-
-    // vABTestExpParam (List kosong di dalam struct: Type 5, Tag 8)
-    Buffer.concat([writeTag(8, 5), Buffer.from([0x00])]),
-
-    Buffer.from([0x80]), // StructEnd untuk SimpleRoleInfo
-  ]);
-
-  // Menggabungkan ke Tag 20 menggunakan helper writeTag(20, 5) [Type 5 = List]
-  // Format List: [Header Tag, Jumlah Item, Data Item...]
-  const tag20Header = writeTag(20, 5); // Otomatis menangani tag >= 15 dengan benar
-  sdpParts.push(
-    Buffer.concat([
-      tag20Header,
-      Buffer.from([0x01]), // Jumlah item di dalam list (1 buah karakter)
-      // roleItem,
-    ]),
+/** Buat akun baru dari Cmd_Login_Auth_CS (akun yang belum ada di database). */
+function createAuthAccount(cs) {
+  const accountName = cs.sAccountName || "";
+  if (!accountName) return DEFAULT_LOGIN_AUTH_ACCOUNT;
+  const info = AUTH_DB.prepare(
+    `INSERT INTO auth_accounts (s_account_name, s_auth_key, s_session_key, st_zone_id, st_zone_name, st_zone_status, st_zone_flag, s_country, s_user_ip, i_acc_create_time, b_new_account, i_account_flag, ui_create_alt, i_server_time_ms)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(
+    accountName,
+    cs.sAuthKey || "",
+    crypto.randomBytes(32).toString("base64"),
+    cs.iLocalZoneId || 1,
+    cs.sChannel || `zone-${cs.iLocalZoneId || 1}`,
+    1,
+    0,
+    cs.sCountry || "",
+    cs.sUserIP || "",
+    Math.floor(Date.now() / 1000),
+    1,
+    2,
+    cs.uiCreateAlt || 0,
+    Date.now(),
   );
+  const row = AUTH_DB.prepare("SELECT * FROM auth_accounts WHERE i_account_id = ?").get(info.lastInsertRowid);
+  return authAccountFromRow(row);
+}
 
-  sdpParts.push(Buffer.from([0x80, 0x80])); // StructEnd utama
-  return packPacket(0x70000201, seq, Buffer.concat(sdpParts));
+/**
+ * Build Cmd_Login_Auth_SC (opcode 0x70000201) untuk seq tertentu.
+ * Akun dipakai bila tersedia (hasil lookup database/toko auth), supaya field
+ * auth (iAccountId, sSessionKey, stZone, flag akun) sesuai akun yang login.
+ */
+function buildLoginAuthSC(seq, account = DEFAULT_LOGIN_AUTH_ACCOUNT) {
+  const sc = new Cmd_Login_Auth_SC(account);
+  const sdpBody = sc.toSdpBody();
+  return packPacket(0x70000201, seq, sdpBody);
 }
 
 const BULLETIN_SDP_TEMPLATE = Buffer.from(
@@ -433,6 +716,11 @@ module.exports = {
   startZoneServer,
   buildColdStartReject,
   buildLoginAuthSC,
+  Cmd_Login_Auth_CS,
+  Cmd_Login_Auth_SC,
+  findAuthAccount,
+  createAuthAccount,
+  registerAuthAccount,
   buildLoginGetBulletinSC,
   buildLoginCheckUpgradeSC,
   buildNetConnectSC,

@@ -36,6 +36,9 @@ const {
   SERVER_IP,
   buildColdStartReject,
   buildLoginAuthSC,
+  Cmd_Login_Auth_CS,
+  findAuthAccount,
+  createAuthAccount,
   buildLoginGetBulletinSC,
   buildLoginCheckUpgradeSC,
   buildNetConnectSC,
@@ -395,7 +398,18 @@ function handleAuthOpcode(sock, opcode, seq, style, label, raw) {
   let built = null;
   if (opcode === 0x70000101) {
     console.log(`[${label}] Cmd_Login_Auth_CS -> Cmd_Login_Auth_SC`);
-    built = buildLoginAuthSC(seq);
+    // Urai body SDP dari request (probe zstd atau frame biasa) -> Cmd_Login_Auth_CS
+    let csBody = null;
+    if (style === "probe") {
+      const inner = probeUnpack(raw);
+      const parsed = probeParseInner(inner);
+      csBody = parsed ? parsed.body : null;
+    } else {
+      csBody = sdp.parseFrame(raw).body;
+    }
+    const cs = Cmd_Login_Auth_CS.fromSdpBody(csBody);
+    const account = findAuthAccount(cs) || createAuthAccount(cs);
+    built = buildLoginAuthSC(seq, account);
   } else if (opcode === 0x70000501) {
     console.log(
       `[${label}] Cmd_Login_CheckUpgrade_CS -> Cmd_Login_CheckUpgrade_SC`,
