@@ -156,6 +156,25 @@ function csFieldDef(tag) {
 }
 
 /**
+ * Peta field Cmd_Login_GetZone_CS -> nomor tag SDP.
+ * Field pertama di dump.cs (iAccountId, offset 0x10) memakai tag 0 dan
+ * nomor tag naik satu per field declaration. Tipe: 4 = string, 0 = int.
+ */
+const GETZONE_CS_TAG_FIELDS = [
+  { tag: 0, field: "iAccountId", type: "int", bigint: true },
+  { tag: 1, field: "sSessionKey", type: "string" },
+  { tag: 2, field: "sClientVersion", type: "string" },
+  { tag: 3, field: "sChannel", type: "string" },
+  { tag: 4, field: "iRegionId", type: "int" },
+  { tag: 5, field: "iGetType", type: "int" },
+];
+
+/** Cari definisi field Cmd_Login_GetZone_CS per nomor tag SDP. */
+function getZoneCsFieldDef(tag) {
+  return GETZONE_CS_TAG_FIELDS.find((c) => c.tag === tag);
+}
+
+/**
  * Cmd_Login_Auth_CS: paket dari client (Cmd_Login_Auth_CS, opcode 0x70000101)
  * setelah diurai dari body SDP. Field yang tidak ada di body hanya diisi
  * default kosong, supaya pemanggilan dari field lain tetap aman.
@@ -301,6 +320,98 @@ class Cmd_Login_Auth_SC {
 }
 
 /**
+ * Cmd_Login_GetZone_CS: paket dari client (Cmd_Login_GetZone_CS, opcode 0x70000301)
+ * setelah diurai dari body SDP. Field yang tidak ada di body hanya diisi
+ * default kosong, supaya pemanggilan dari field lain tetap aman.
+ */
+class Cmd_Login_GetZone_CS {
+  constructor() {
+    this.iAccountId = 0n;
+    this.sSessionKey = "";
+    this.sClientVersion = "";
+    this.sChannel = "";
+    this.iRegionId = 0;
+    this.iGetType = 0;
+  }
+
+  /**
+   * Urai body SDP menjadi instance Cmd_Login_GetZone_CS.
+   * Body berbentuk root struct (tag 0) + StructEnd.
+   */
+  static fromSdpBody(body) {
+    const cs = new Cmd_Login_GetZone_CS();
+    if (!body) return cs;
+    let nodes;
+    try {
+      nodes = sdp.decode(body);
+    } catch (_) {
+      return cs;
+    }
+    const root = nodes[0];
+    if (!root || root.type !== sdp.T.STRUCT) return cs;
+    for (const f of root.fields) {
+      const def = getZoneCsFieldDef(f.tag);
+      if (!def) continue;
+      if (def.type === "string") {
+        cs[def.field] = f.type === sdp.T.STRING ? f.raw.toString("utf8") : "";
+      } else if (def.type === "int" || def.type === "bool") {
+        if (def.bigint) {
+          cs[def.field] = f.type === sdp.T.INT || f.type === sdp.T.NEG ? BigInt(f.v) : 0n;
+        } else {
+          cs[def.field] = f.type === sdp.T.INT || f.type === sdp.T.NEG ? Number(f.v) : 0;
+        }
+      }
+    }
+    return cs;
+  }
+}
+
+/**
+ * Cmd_Login_GetZone_SC: paket response untuk Cmd_Login_GetZone_CS.
+ * Membawa daftar zone (vZoneList) dan role (vRoleList) untuk akun yang login.
+ */
+class Cmd_Login_GetZone_SC {
+  constructor(account = DEFAULT_LOGIN_AUTH_ACCOUNT) {
+    const zone = (account && account.stZone) || DEFAULT_LOGIN_AUTH_ACCOUNT.stZone;
+    this.vZoneList = [
+      {
+        iZoneId: zone.iZoneId ?? 1,
+        sZoneName: zone.sZoneName || "",
+        iStatus: zone.iStatus ?? 1,
+        iFlag: zone.iFlag ?? 0,
+      },
+    ];
+    this.vRoleList = [];
+    this.iRegionId = account ? account.iRegionId ?? 0 : 0;
+  }
+
+  /** Bungkus field akun menjadi body SDP untuk Cmd_Login_GetZone_SC. */
+  toSdpBody() {
+    const zone = this.vZoneList[0] || {};
+    const sdpParts = [];
+    sdpParts.push(Buffer.from([0x70])); // StructBegin
+
+    // Tag 0: vZoneList (List of CmdZoneInfo) -> 1 item
+    sdpParts.push(Buffer.from([0x50, 0x01])); // Type 5 (List) tag 0, jumlah item 1
+    sdpParts.push(Buffer.from([0x70])); // StructBegin item (tag 0)
+    sdpParts.push(packInt(0, BigInt(zone.iZoneId ?? 1)));
+    sdpParts.push(packString(1, zone.sZoneName || ""));
+    sdpParts.push(packInt(2, BigInt(zone.iStatus ?? 1)));
+    sdpParts.push(packInt(3, BigInt(zone.iFlag ?? 0)));
+    sdpParts.push(Buffer.from([0x80])); // StructEnd item
+
+    // Tag 1: vRoleList (List) -> kosong
+    sdpParts.push(Buffer.from([0x51, 0x00])); // Type 5 (List) tag 1, jumlah item 0
+
+    // Tag 2: iRegionId
+    sdpParts.push(packInt(2, BigInt(this.iRegionId || 0)));
+
+    sdpParts.push(Buffer.from([0x80, 0x80])); // StructEnd utama
+    return Buffer.concat(sdpParts);
+  }
+}
+
+/**
  * Akun auth default (legacy) supaya perilaku lama tetap terjaga bila belum
  * ada akun yang cocok dengan informasi dari Cmd_Login_Auth_CS.
  */
@@ -340,6 +451,7 @@ AUTH_DB.exec(`CREATE TABLE IF NOT EXISTS auth_accounts (
   st_zone_flag INTEGER,
   s_country TEXT NOT NULL DEFAULT '',
   s_user_ip TEXT NOT NULL DEFAULT '',
+  i_region_id INTEGER NOT NULL DEFAULT 0,
   i_acc_create_time INTEGER NOT NULL,
   b_new_account INTEGER NOT NULL,
   i_account_flag INTEGER NOT NULL,
@@ -349,6 +461,16 @@ AUTH_DB.exec(`CREATE TABLE IF NOT EXISTS auth_accounts (
 AUTH_DB.exec(
   "CREATE INDEX IF NOT EXISTS idx_auth_accounts_auth_key ON auth_accounts (LOWER(s_auth_key));",
 );
+
+// Migrasi ringan: pastikan kolom i_region_id ada pada database lama.
+{
+  const cols = AUTH_DB.prepare("PRAGMA table_info(auth_accounts)").all();
+  if (!cols.some((c) => c.name === "i_region_id")) {
+    AUTH_DB.exec(
+      "ALTER TABLE auth_accounts ADD COLUMN i_region_id INTEGER NOT NULL DEFAULT 0;",
+    );
+  }
+}
 
 /** Ubah baris database (snake_case) menjadi objek akun (camelCase). */
 function authAccountFromRow(row) {
@@ -365,6 +487,7 @@ function authAccountFromRow(row) {
     },
     sCountry: row.s_country || "",
     sUserIP: row.s_user_ip || "",
+    iRegionId: row.i_region_id ?? 0,
     iAccCreateTime: row.i_acc_create_time ?? 0,
     bNewAccount: !!row.b_new_account,
     iAccountFlag: row.i_account_flag ?? 2,
@@ -376,8 +499,8 @@ function authAccountFromRow(row) {
 /** Daftarkan akun baru ke database auth. */
 function registerAuthAccount(account) {
   AUTH_DB.prepare(
-    `INSERT INTO auth_accounts (s_account_name, s_auth_key, s_session_key, st_zone_id, st_zone_name, st_zone_status, st_zone_flag, s_country, s_user_ip, i_acc_create_time, b_new_account, i_account_flag, ui_create_alt, i_server_time_ms)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO auth_accounts (s_account_name, s_auth_key, s_session_key, st_zone_id, st_zone_name, st_zone_status, st_zone_flag, s_country, s_user_ip, i_region_id, i_acc_create_time, b_new_account, i_account_flag, ui_create_alt, i_server_time_ms)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     account.sAccountName || "",
     account.sAuthKey || "",
@@ -388,6 +511,7 @@ function registerAuthAccount(account) {
     account.stZone ? account.stZone.iFlag ?? 0 : 0,
     account.sCountry || "",
     account.sUserIP || "",
+    account.iRegionId ?? 0,
     account.iAccCreateTime ?? 0,
     account.bNewAccount ? 1 : 0,
     account.iAccountFlag ?? 2,
@@ -415,13 +539,32 @@ function findAuthAccount(cs) {
   return null;
 }
 
+/**
+ * Cari akun dari database auth berdasarkan i_account_id
+ * (diambil dari Cmd_Login_GetZone_CS).
+ */
+function findAuthAccountById(id) {
+  if (id === null || id === undefined || id === "") return null;
+  let accountId;
+  try {
+    accountId = BigInt(id);
+  } catch (_) {
+    return null; // iAccountId tidak valid -> anggap tidak ada
+  }
+  const row = AUTH_DB.prepare(
+    "SELECT * FROM auth_accounts WHERE i_account_id = ? LIMIT 1",
+  ).get(accountId);
+  if (!row) return null;
+  return authAccountFromRow(row);
+}
+
 /** Buat akun baru dari Cmd_Login_Auth_CS (akun yang belum ada di database). */
 function createAuthAccount(cs) {
   const accountName = cs.sAccountName || "";
   if (!accountName) return DEFAULT_LOGIN_AUTH_ACCOUNT;
   const info = AUTH_DB.prepare(
-    `INSERT INTO auth_accounts (s_account_name, s_auth_key, s_session_key, st_zone_id, st_zone_name, st_zone_status, st_zone_flag, s_country, s_user_ip, i_acc_create_time, b_new_account, i_account_flag, ui_create_alt, i_server_time_ms)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO auth_accounts (s_account_name, s_auth_key, s_session_key, st_zone_id, st_zone_name, st_zone_status, st_zone_flag, s_country, s_user_ip, i_region_id, i_acc_create_time, b_new_account, i_account_flag, ui_create_alt, i_server_time_ms)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     accountName,
     cs.sAuthKey || "",
@@ -432,6 +575,7 @@ function createAuthAccount(cs) {
     0,
     cs.sCountry || "",
     cs.sUserIP || "",
+    cs.iRegionId || 0,
     Math.floor(Date.now() / 1000),
     1,
     2,
@@ -451,6 +595,17 @@ function buildLoginAuthSC(seq, account = DEFAULT_LOGIN_AUTH_ACCOUNT) {
   const sc = new Cmd_Login_Auth_SC(account);
   const sdpBody = sc.toSdpBody();
   return packPacket(0x70000201, seq, sdpBody);
+}
+
+/**
+ * Build Cmd_Login_GetZone_SC (opcode 0x70000401) untuk seq tertentu.
+ * Daftar zone diambil dari akun (hasil lookup database), sehingga client
+ * langsung diarahkan ke zone yang tersimpan untuk akun tersebut.
+ */
+function buildLoginGetZoneSC(seq, account = DEFAULT_LOGIN_AUTH_ACCOUNT) {
+  const sc = new Cmd_Login_GetZone_SC(account);
+  const sdpBody = sc.toSdpBody();
+  return packPacket(0x70000401, seq, sdpBody);
 }
 
 const BULLETIN_SDP_TEMPLATE = Buffer.from(
@@ -718,7 +873,11 @@ module.exports = {
   buildLoginAuthSC,
   Cmd_Login_Auth_CS,
   Cmd_Login_Auth_SC,
+  buildLoginGetZoneSC,
+  Cmd_Login_GetZone_CS,
+  Cmd_Login_GetZone_SC,
   findAuthAccount,
+  findAuthAccountById,
   createAuthAccount,
   registerAuthAccount,
   buildLoginGetBulletinSC,

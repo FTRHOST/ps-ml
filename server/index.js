@@ -37,7 +37,10 @@ const {
   buildColdStartReject,
   buildLoginAuthSC,
   Cmd_Login_Auth_CS,
+  buildLoginGetZoneSC,
+  Cmd_Login_GetZone_CS,
   findAuthAccount,
+  findAuthAccountById,
   createAuthAccount,
   buildLoginGetBulletinSC,
   buildLoginCheckUpgradeSC,
@@ -410,6 +413,26 @@ function handleAuthOpcode(sock, opcode, seq, style, label, raw) {
     const cs = Cmd_Login_Auth_CS.fromSdpBody(csBody);
     const account = findAuthAccount(cs) || createAuthAccount(cs);
     built = buildLoginAuthSC(seq, account);
+  } else if (opcode === 0x70000301) {
+    console.log(`[${label}] Cmd_Login_GetZone_CS -> Cmd_Login_GetZone_SC`);
+    // Urai body SDP dari request (probe zstd atau frame biasa) -> Cmd_Login_GetZone_CS
+    let csBody = null;
+    if (style === "probe") {
+      const inner = probeUnpack(raw);
+      const parsed = probeParseInner(inner);
+      csBody = parsed ? parsed.body : null;
+    } else {
+      csBody = sdp.parseFrame(raw).body;
+    }
+    const cs = Cmd_Login_GetZone_CS.fromSdpBody(csBody);
+    // Cari akun berdasarkan iAccountId di database; fallback ke zone default.
+    const account = findAuthAccountById(cs.iAccountId);
+    if (!account) {
+      console.log(
+        `[${label}] akun iAccountId=${cs.iAccountId} tidak ditemukan -> zone default`,
+      );
+    }
+    built = buildLoginGetZoneSC(seq, account || undefined);
   } else if (opcode === 0x70000501) {
     console.log(
       `[${label}] Cmd_Login_CheckUpgrade_CS -> Cmd_Login_CheckUpgrade_SC`,
