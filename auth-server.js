@@ -162,7 +162,7 @@ function buildLoginAuthSC(
     Buffer.concat([
       tag20Header,
       Buffer.from([0x01]), // Jumlah item di dalam list (1 buah karakter)
-      roleItem,
+      // roleItem,
     ]),
   );
 

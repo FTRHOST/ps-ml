@@ -62,7 +62,13 @@ case "${1:-}" in
     echo "[*] Hotspot aktif: ${IFACE} ($(ap_ip "${IFACE}")) SSID=$(ssid)"
     echo "[*] Memasang DNAT untuk device ini dan semua klien hotspot..."
     "${REDIRECT}" wifi
+    HOST_IP="$(ip route get 1.1.1.1 2>/dev/null \
+      | awk '{for (i = 1; i <= NF; i++) if ($i == "src") { print $(i + 1); exit }}')"
     echo
+    if [ -n "${HOST_IP}" ]; then
+      echo "[i] Jalankan server di PC dengan IP ini (bukan IP hotspot PC):"
+      echo "      SERVER_IP=${HOST_IP} MODE=emulate node server/index.js"
+    fi
     echo "[✓] Perangkat yang join hotspot ini akan masuk ke server lokal PC."
     echo "    Klien saat ini:"
     clients "${IFACE}"

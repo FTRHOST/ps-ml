@@ -312,6 +312,41 @@ bash tools/redirect.sh on|wifi [IP-PC]|off|status
 - Aturan bertahan sampai reboot; jalankan ulang setelah reboot atau bila IP PC
   berubah.
 
+### 6.1 Topologi WiFi + hotspot HP root (terbukti 2026-11-09)
+
+HP non-root **tidak bisa** dibelokkan saat berada di WiFi rumah, karena tidak
+punya iptables dan router tidak melakukan DNAT. Solusi yang terbukti: jadikan HP
+root sebagai gateway hotspot, lalu arahkan klien hotspot ke IP PC di WiFi
+upstream.
+
+```text
+HP non-root 192.168.21.x → FTRHOST (HP root, ap0 192.168.21.153)
+  → wlan0 192.168.18.162 → WiFi rumah → PC 192.168.18.163 (server)
+```
+
+Langkah:
+
+```bash
+# Di PC (harus di WiFi rumah yang sama dengan HP root)
+ip -4 addr show wlan0                    # mis. 192.168.18.163
+SERVER_IP=192.168.18.163 MODE=emulate DIAMOND=9999999 LEVEL=999 \
+  node server/index.js
+
+# Di PC: pasang DNAT ke HP root
+adb forward tcp:2626 tcp:2626
+./tools/redirect.sh wifi 192.168.18.163
+# atau: ./tools/hotspot.sh on
+
+# Di HP root: pastikan hotspot + upstream aktif
+adb shell 'ip -o -4 addr show ap0'       # 192.168.21.153/24
+adb shell 'ip -o -4 addr show wlan0'     # 192.168.18.162/24
+adb shell 'ip route get 192.168.18.163'  # harus lewat wlan0
+```
+
+HP non-root cukup join `FTRHOST` (password `ffffffff`). Detail alasan
+(client-to-client diblokir, kenapa target harus IP upstream, troubleshooting):
+`docs/TOPOLOGI-WIFI-HOTSPOT.md`.
+
 ---
 
 ## 7. Jebakan yang sudah memakan waktu
@@ -337,17 +372,20 @@ bash tools/redirect.sh on|wifi [IP-PC]|off|status
 
 ---
 
-## 8. Lingkungan saat ini
+## 8. Lingkungan saat ini (2026-11-09)
 
-- PC: `192.168.210.209` (Linux). Working dir `/home/petwirkepo/Downloads/files`.
-- Device: Redmi Note 9, `adb-76aa07d10405-K46Ryp._adb-tls-connect._tcp`,
-  IP `192.168.1.24`.
-- Game: `com.mobilelegends.taptest` v2.2.29.1250.1, proses
-  `com.mobilelegends.taptest:UnityKillsMe`.
+- PC: `192.168.18.163` (Linux, WiFi rumah `Brajan Atas - 5G`). Working dir
+  `/home/petwirkepo/Downloads/ps-ml`.
+- HP root: Redmi Note 9, `adb-76aa07d10405-K46Ryp._adb-tls-connect._tcp` /
+  `192.168.18.162:43783`, `wlan0 192.168.18.162`, hotspot
+  `ap0 192.168.21.153` (SSID `FTRHOST`).
+- HP uji non-root: join `FTRHOST`, mendapat IP `192.168.21.x`.
+- Game: `com.mobile.legends` v2.2.16.1232.1 (uji 2026-11-09). Build uji repo
+  tetap `com.mobilelegends.taptest` v2.2.29.1250.1.
 - Frida server port `2626` (device pid berubah tiap reboot; `adb forward tcp:2626`).
-- Akun uji: nama `Test-ori`, level capture 6 (di-override jadi **28**), coin 3243,
-  diamond capture 0 (di-override jadi **2626**).
-- Repo **bukan** git repository.
+- Akun uji: nama `Test-ori`, level capture 6, coin 3243, diamond capture 0.
+  Override uji terakhir: `DIAMOND=9999999 LEVEL=999` (mode `emulate`).
+- Repo adalah git repository.
 
 ---
 

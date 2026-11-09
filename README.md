@@ -83,7 +83,7 @@ langsung diarahkan ke PC:
 
 ```bash
 ./tools/redirect.sh wifi                 # IP PC dideteksi otomatis
-./tools/redirect.sh wifi 192.168.210.209 # atau sebutkan IP PC
+./tools/redirect.sh wifi 192.168.18.163  # atau sebutkan IP PC di WiFi rumah
 ./tools/redirect.sh status               # cek DNAT + adb reverse kosong
 ./tools/redirect.sh off                  # kembali ke server resmi
 ```
@@ -97,9 +97,17 @@ Bila device dijadikan hotspot, cukup pakai helper:
 ./tools/hotspot.sh off       # lepas semua pengalihan
 ```
 
-Contoh: hotspot device bernama `FTRHOST` dengan IP `192.168.210.139`; PC
-tersambung sebagai klien `192.168.210.209`. Semua perangkat yang join `FTRHOST`
-langsung diarahkan ke server lokal PC tanpa root di perangkat klien.
+Contoh: hotspot device bernama `FTRHOST`; PC tersambung ke **WiFi rumah yang
+sama** dengan device (bukan sebagai klien hotspot). Semua perangkat yang join
+`FTRHOST` diarahkan ke server lokal PC tanpa root di perangkat klien.
+
+> **Topologi yang terbukti (2026-11-09):** PC dan HP root sama-sama tersambung
+> ke WiFi rumah `Brajan Atas - 5G` (PC `192.168.18.163`, HP root
+> `192.168.18.162`). HP root menyalakan hotspot `FTRHOST`; HP lain yang
+> **non-root harus join `FTRHOST`**, bukan WiFi rumah. Server dijalankan dengan
+> `SERVER_IP=192.168.18.163` dan DNAT dipasang lewat
+> `./tools/redirect.sh wifi 192.168.18.163`. Alasan lengkap, diagram, dan
+> troubleshooting: [`docs/TOPOLOGI-WIFI-HOTSPOT.md`](docs/TOPOLOGI-WIFI-HOTSPOT.md).
 
 Agar aturan otomatis dipasang ulang setelah Android membersihkan NAT saat
 jaringan berubah:
@@ -116,6 +124,10 @@ Yang dilakukan mode `wifi`:
   `PREROUTING` DNAT + `POSTROUTING` MASQUERADE, sehingga **perangkat lain yang
   tersambung ke hotspot itu otomatis memakai server lokal** tanpa root di
   perangkat klien.
+- Target `<IP-PC>` harus IP PC yang bisa dijangkau lewat interface **upstream**
+  device (mis. IP PC di WiFi rumah), **bukan** IP PC di subnet hotspot. Bila PC
+  ikut hotspot, koneksi zone menjadi client-to-client dan diblokir oleh hotspot
+  Android.
 - `adb reverse` dilepas, jadi koneksi murni lewat LAN/hotspot.
 
 Syarat: PC dan device saling terjangkau, firewall PC mengizinkan port
@@ -126,7 +138,8 @@ bertahan sampai reboot; setelah reboot atau IP PC berubah, jalankan ulang
 ### 3.2 Alternatif: PC sebagai hotspot (tanpa HP)
 
 Bisa juga **PC sendiri** yang dipasang sebagai hotspot, sehingga semua perangkat
-(HJ) cukup join SSID-nya lalu otomatis dialihkan ke server lokal oleh PC.
+(HJ) cukup join SSID-nya lalu otomatis dialihkan ke server lokal oleh PC. Ini
+alternatif untuk HP non-root yang tidak mau atau tidak bisa join hotspot HP root.
 Pendukung hardware: adapter `wlan0` PC mendukung mode `AP` (`iw list` →
 `* AP`, `* AP/VLAN`).
 
@@ -220,6 +233,9 @@ node tools/build-schema.js
 | Game memakai server resmi | `adb reverse` hilang setelah reboot/cabut USB | jalankan `./tools/redirect.sh on` atau `wifi` |
 | Ingin main lewat WiFi/hotspot | belum ada DNAT ke PC | `./tools/redirect.sh wifi` (root di device) |
 | Perangkat lain di hotspot tidak masuk server lokal | aturan `PREROUTING` belum terpasang | cek `./tools/redirect.sh status`, pastikan interface `ap0` terdeteksi |
+| HP non-root di WiFi rumah tidak masuk server lokal | tidak ada iptables/router DNAT | sambungkan HP ke hotspot HP root, atau pasang port forwarding di router |
+| PC ikut hotspot, klien tidak bisa masuk | target DNAT berada di subnet hotspot (client-to-client) | pindahkan PC ke WiFi upstream, pakai IP PC di WiFi rumah |
+| Game stuck di zone setelah auth | `SERVER_IP` bukan IP PC di WiFi upstream | restart server dengan `SERVER_IP=<IP-PC-WiFi-rumah>` |
 | IP PC berubah setelah reconnect | DHCP hotspot memberi alamat baru | jalankan ulang `./tools/redirect.sh wifi` |
 | Relay hanya melihat auth | port zone klien berbeda | pastikan `ZONE_PORT=30101,10003` |
 | `frida.ServerNotRunningError` | `adb forward tcp:2626` belum ada | `adb forward tcp:2626 tcp:2626` |
