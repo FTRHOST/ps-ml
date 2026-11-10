@@ -115,7 +115,7 @@ const CS_TAG_FIELDS = [
   { tag: 3, field: "sChannel", type: "string" },
   { tag: 4, field: "sOSLanguage", type: "string" },
   { tag: 5, field: "iOSType", type: "int" },
-  { tag: 6, field: "mMiscData", type: "string" },
+  { tag: 6, field: "mMiscData", type: "map" },
   { tag: 7, field: "iLocalZoneId", type: "int" },
   { tag: 8, field: "iRegionId", type: "int" },
   { tag: 9, field: "sCountry", type: "string" },
@@ -124,7 +124,7 @@ const CS_TAG_FIELDS = [
   { tag: 12, field: "uiConfirmNotOverrideFromZing", type: "int" },
   { tag: 13, field: "sUnityVersion", type: "string" },
   { tag: 14, field: "sDeviceInfo", type: "string" },
-  { tag: 15, field: "mIDFAData", type: "string" },
+  { tag: 15, field: "mIDFAData", type: "map" },
   { tag: 16, field: "stReportInfo", type: "struct" },
   { tag: 17, field: "bUnbindDeviceId", type: "bool" },
   { tag: 18, field: "iRoleZoneId", type: "int" },
@@ -142,7 +142,7 @@ const CS_TAG_FIELDS = [
   { tag: 30, field: "sAppUuid", type: "string" },
   { tag: 31, field: "sAppClickId", type: "string" },
   { tag: 32, field: "iMagic", type: "int" },
-  { tag: 33, field: "mNetEaseVerify", type: "string" },
+  { tag: 33, field: "mNetEaseVerify", type: "map" },
   { tag: 34, field: "bNetEaseVerifyPass", type: "bool" },
   { tag: 35, field: "sInitInfo", type: "string" },
   { tag: 36, field: "iSrcAppType", type: "int" },
@@ -224,17 +224,169 @@ class Cmd_Login_Auth_CS {
     }
     const root = nodes[0];
     if (!root || root.type !== sdp.T.STRUCT) return cs;
+    const parsedExtraFields = [];
     for (const f of root.fields) {
       const def = csFieldDef(f.tag);
-      if (!def) continue;
-      if (def.type === "string") {
-        cs[def.field] = f.type === sdp.T.STRING ? f.raw.toString("utf8") : "";
-      } else if (def.type === "int" || def.type === "bool") {
-        cs[def.field] = f.type === sdp.T.INT || f.type === sdp.T.NEG ? Number(f.v) : 0;
+      if (def) {
+        if (def.type === "string") {
+          cs[def.field] = f.type === sdp.T.STRING ? f.raw.toString("utf8") : "";
+        } else if (def.type === "int" || def.type === "bool") {
+          cs[def.field] =
+            f.type === sdp.T.INT || f.type === sdp.T.NEG ? Number(f.v) : 0;
+        } else if (def.type === "map") {
+          const sub = {};
+          if (f.type === sdp.T.MAP && Array.isArray(f.entries)) {
+            for (const [k, v] of f.entries) {
+              const key = typeof k?.v === "bigint" ? k.v.toString() : String(k);
+              const val =
+                v && (v.type === sdp.T.STRING || v.type === sdp.T.INT || v.type === sdp.T.NEG)
+                  ? v.type === sdp.T.STRING
+                    ? v.raw.toString("utf8")
+                    : Number(v.v)
+                  : "";
+              sub[key] = val;
+            }
+          }
+          cs[def.field] = sub;
+        } else if (def.type === "struct") {
+          const sub = {};
+          if (f.type === sdp.T.STRUCT && Array.isArray(f.fields)) {
+            for (const sf of f.fields) {
+              sub[sf.tag] = sf.type === sdp.T.STRING ? sf.raw.toString("utf8") : Number(sf.v);
+            }
+          }
+          cs[def.field] = sub;
+        }
       }
+      // Field di luar peta dump.cs: simpan agar tidak hilang tanpa nolah.
+      if (!def) parsedExtraFields.push(f);
     }
+    cs.parsedExtraFields = parsedExtraFields;
     return cs;
   }
+}
+
+/**
+ * Emit struct CmdZoneInfo ke bagian body SDP. Begin struct memakai field tag-nya
+ * (tag 2 -> byte 0x72, dst.); sub-field memakai tag naik-turut mulai 0.
+ */
+function emitZone(sdpParts, fieldTag, zone) {
+  if (!zone) return;
+  sdpParts.push(Buffer.from([(0x70 | fieldTag) & 0xff]));
+  if (zone.iZoneId) sdpParts.push(packInt(0, BigInt(zone.iZoneId)));
+  if (zone.sZoneName) sdpParts.push(packString(1, zone.sZoneName));
+  if (zone.iStatus) sdpParts.push(packInt(2, BigInt(zone.iStatus)));
+  if (zone.iFlag) sdpParts.push(packInt(3, BigInt(zone.iFlag)));
+  if (zone.sVersion) sdpParts.push(packString(4, zone.sVersion));
+  if (zone.sChannel) sdpParts.push(packString(5, zone.sChannel));
+  if (zone.iMergeToZone) sdpParts.push(packInt(6, BigInt(zone.iMergeToZone)));
+  if (zone.bIsMergeZone) sdpParts.push(packInt(7, 1));
+  if (zone.iLastReportTime) sdpParts.push(packInt(8, BigInt(zone.iLastReportTime)));
+  if (zone.iLastGameTime) sdpParts.push(packInt(9, BigInt(zone.iLastGameTime)));
+  sdpParts.push(Buffer.from([0x80])); // StructEnd
+}
+
+/** Emit list SDP: header tipe List + jumlah item + item. Item kosong -> count 0. */
+function emitList(sdpParts, listTag, items, emitter) {
+  if (!items || items.length === 0) {
+    sdpParts.push(writeTag(listTag, 5), Buffer.from([0x00]));
+    return;
+  }
+  sdpParts.push(writeTag(listTag, 5));
+  sdpParts.push(writeVarUint(items.length));
+  for (const item of items) emitter(sdpParts, item);
+}
+
+/** Emit struct CmdAccountInfo (dipakai list vAccountInfo). */
+function emitAccountInfo(sdpParts, info) {
+  if (!info) return;
+  sdpParts.push(Buffer.from([0x70])); // StructBegin elemen list (tag 0)
+  if (info.sAccountName) sdpParts.push(packString(0, info.sAccountName));
+  if (info.mData) emitMapStr(sdpParts, 0, info.mData);
+  if (info.iUnlockTime) sdpParts.push(packInt(2, BigInt(info.iUnlockTime)));
+  if (info.iBanTime) sdpParts.push(packInt(3, BigInt(info.iBanTime)));
+  if (info.iCanUnbindTime) sdpParts.push(packInt(4, BigInt(info.iCanUnbindTime)));
+  if (info.bInterwork) sdpParts.push(packInt(5, 1));
+  if (info.iInterworkOriOsType) sdpParts.push(packInt(6, BigInt(info.iInterworkOriOsType)));
+  if (info.sUsaEmailToken) sdpParts.push(packString(7, info.sUsaEmailToken));
+  sdpParts.push(Buffer.from([0x80])); // StructEnd
+}
+
+/** Emit list SimpleRoleInfo (dipakai vSimpleRoleInfo). */
+function emitSimpleRoleInfo(sdpParts, info) {
+  if (!info) return;
+  sdpParts.push(Buffer.from([0x70])); // StructBegin elemen list (tag 0)
+  if (info.iZoneID) sdpParts.push(packInt(0, BigInt(info.iZoneID)));
+  if (info.iCreateRoleTime) sdpParts.push(packInt(1, BigInt(info.iCreateRoleTime)));
+  if (info.iAreaTag) sdpParts.push(packInt(2, BigInt(info.iAreaTag)));
+  if (info.bChangeName) sdpParts.push(packInt(3, 1));
+  if (info.iCreateRoleAreaTag) sdpParts.push(packInt(4, BigInt(info.iCreateRoleAreaTag)));
+  if (info.iLevel) sdpParts.push(packInt(5, BigInt(info.iLevel)));
+  if (info.iForceChangeAreaTagReason) sdpParts.push(packInt(6, BigInt(info.iForceChangeAreaTagReason)));
+  if (info.sCreateRoleCountry) sdpParts.push(packString(7, info.sCreateRoleCountry));
+  if (info.vABTestExpParam && info.vABTestExpParam.length) {
+    sdpParts.push(writeTag(8, 5));
+    sdpParts.push(writeVarUint(info.vABTestExpParam.length));
+    for (const entry of info.vABTestExpParam) sdpParts.push(packString(0, String(entry)));
+  }
+  sdpParts.push(Buffer.from([0x80])); // StructEnd
+}
+
+function emitAccountList(sdpParts, listTag, items) {
+  emitList(sdpParts, listTag, items, emitAccountInfo);
+}
+
+function emitSimpleRoleList(sdpParts, listTag, items) {
+  emitList(sdpParts, listTag, items, emitSimpleRoleInfo);
+}
+
+/** Emit map<string, string> (Map) ke body SDP. */
+function emitMapStr(sdpParts, mapTag, map) {
+  if (!map) return;
+  const entries = Object.entries(map).filter(
+    ([, v]) => v !== undefined && v !== null && v !== "",
+  );
+  if (entries.length === 0) return;
+  sdpParts.push(Buffer.from([(6 << 4) | mapTag]));
+  sdpParts.push(writeVarUint(entries.length));
+  for (const [k, v] of entries) {
+    sdpParts.push(packString(0, String(k)));
+    sdpParts.push(packString(0, String(v)));
+  }
+}
+
+/** Emit map<integer, string> ke body SDP. */
+function emitMapIntStr(sdpParts, mapTag, map) {
+  if (!map) return;
+  const entries = Object.entries(map)
+    .map(([k, v]) => [Number(k), v])
+    .filter(([k, v]) => Number.isFinite(k) && v !== undefined && v !== null && v !== "");
+  if (entries.length === 0) return;
+  sdpParts.push(Buffer.from([(6 << 4) | mapTag]));
+  sdpParts.push(writeVarUint(entries.length));
+  for (const [k, v] of entries) {
+    sdpParts.push(packInt(0, BigInt(k)));
+    sdpParts.push(packString(0, String(v)));
+  }
+}
+
+/** Emit struct CmdUnregInfo ke body SDP. */
+function emitUnregInfo(sdpParts, info) {
+  if (!info) return;
+  sdpParts.push(Buffer.from([(0x70 | 17) & 0xff])); // StructBegin tag 17
+  if (info.iStatus) sdpParts.push(packInt(0, BigInt(info.iStatus)));
+  if (info.vRole && info.vRole.length) {
+    sdpParts.push(writeTag(1, 5));
+    sdpParts.push(writeVarUint(info.vRole.length));
+    for (const v of info.vRole) sdpParts.push(packInt(0, BigInt(v)));
+  }
+  if (info.vFailReason && info.vFailReason.length) {
+    sdpParts.push(writeTag(2, 5));
+    sdpParts.push(writeVarUint(info.vFailReason.length));
+    for (const v of info.vFailReason) sdpParts.push(packInt(0, BigInt(v)));
+  }
+  if (info.iUnregExceTime) sdpParts.push(packInt(3, BigInt(info.iUnregExceTime)));
+  sdpParts.push(Buffer.from([0x80])); // StructEnd
 }
 
 /**
@@ -253,6 +405,9 @@ class Cmd_Login_Auth_SC {
       iFlag: 0,
     };
     this.vAccountInfo = account.vAccountInfo || [];
+    this.stMergingZone = account.stMergingZone || null;
+    this.stOtherRoleZone = account.stOtherRoleZone || null;
+    this.stNewestZone = account.stNewestZone || null;
     this.sUserIP = account.sUserIP || "";
     this.sAccountName = account.sAccountName || "";
     this.sCountry = account.sCountry || "";
@@ -263,58 +418,127 @@ class Cmd_Login_Auth_SC {
     this.iAccountFlag = account.iAccountFlag ?? 2;
     this.uiCreateAlt = account.uiCreateAlt ?? 0;
     this.sIsp = account.sIsp || "";
+    this.stUnregInfo = account.stUnregInfo || null;
+    this.sState = account.sState || "";
     this.iAccCreateTime = account.iAccCreateTime ?? 1793530475;
     this.vSimpleRoleInfo = account.vSimpleRoleInfo || [];
     this.iTimeGmtOff = account.iTimeGmtOff ?? 0n;
+    this.mapConfig = account.mapConfig || null;
+    this.stUnbindData = account.stUnbindData || null;
+    this.bIsFlowBack = !!account.bIsFlowBack;
+    this.mErrorParam = account.mErrorParam || null;
+    this.mapConfigWithIntKey = account.mapConfigWithIntKey || null;
+    this.sLoginAccToken = account.sLoginAccToken || "";
+    this.sMd5 = account.sMd5 || "";
+    this.mapConfigV2 = account.mapConfigV2 || null;
+    this.bClearLoginAccToken = !!account.bClearLoginAccToken;
+    this.iSharkResult = account.iSharkResult ?? 0;
+    this.iNetEaseResult = account.iNetEaseResult ?? 0;
+    this.iAccountServerFlag = account.iAccountServerFlag ?? 0;
   }
 
   /** Bungkus field akun menjadi body SDP untuk Cmd_Login_Auth_SC. */
   toSdpBody() {
+    const a = this;
     const sdpParts = [];
     sdpParts.push(Buffer.from([0x70])); // StructBegin
 
     // Tag 0: iAccountId (UInt64 -> BigInt)
-    sdpParts.push(packInt(0, this.iAccountId));
+    if (a.iAccountId) sdpParts.push(packInt(0, BigInt(a.iAccountId)));
 
     // Tag 1: sSessionKey
-    sdpParts.push(packString(1, this.sSessionKey));
+    if (a.sSessionKey) sdpParts.push(packString(1, a.sSessionKey));
 
     // Tag 2: stZone (CmdZoneInfo struct)
-    sdpParts.push(
-      Buffer.concat([
-        Buffer.from([0x72]), // StructBegin dengan Tag 2 (0x70 | 2)
-        packInt(0, this.stZone.iZoneId),
-        packString(1, this.stZone.sZoneName),
-        packInt(2, this.stZone.iStatus),
-        Buffer.from([0x80]), // StructEnd
-      ]),
-    );
+    {
+      const z = a.stZone || {};
+      sdpParts.push(Buffer.from([0x72])); // StructBegin stZone (Tag 2)
+      if (z.iZoneId) sdpParts.push(packInt(0, BigInt(z.iZoneId)));
+      if (z.sZoneName) sdpParts.push(packString(1, z.sZoneName));
+      if (z.iStatus) sdpParts.push(packInt(2, BigInt(z.iStatus)));
+      if (z.iFlag) sdpParts.push(packInt(3, BigInt(z.iFlag)));
+      if (z.sVersion) sdpParts.push(packString(4, z.sVersion));
+      if (z.sChannel) sdpParts.push(packString(5, z.sChannel));
+      if (z.iMergeToZone) sdpParts.push(packInt(6, BigInt(z.iMergeToZone)));
+      if (z.bIsMergeZone) sdpParts.push(packInt(7, 1));
+      if (z.iLastReportTime) sdpParts.push(packInt(8, BigInt(z.iLastReportTime)));
+      if (z.iLastGameTime) sdpParts.push(packInt(9, BigInt(z.iLastGameTime)));
+      sdpParts.push(Buffer.from([0x80])); // StructEnd stZone
+    }
 
-    // Tag 3: vAccountInfo (List kosong)
-    sdpParts.push(Buffer.from([0x53, 0x00]));
+    // Tag 3: vAccountInfo (List<CmdAccountInfo>)
+    emitAccountList(sdpParts, 3, a.vAccountInfo);
+
+    // Tag 4-6: stMergingZone / stOtherRoleZone / stNewestZone (CmdZoneInfo)
+    emitZone(sdpParts, 4, a.stMergingZone);
+    emitZone(sdpParts, 5, a.stOtherRoleZone);
+    emitZone(sdpParts, 6, a.stNewestZone);
+
+    // Tag 7-9: sUserIP / sAccountName / sCountry
+    if (a.sUserIP) sdpParts.push(packString(7, a.sUserIP));
+    if (a.sAccountName) sdpParts.push(packString(8, a.sAccountName));
+    if (a.sCountry) sdpParts.push(packString(9, a.sCountry));
 
     // Tag 10: iServerTimeMS (UInt64 -> BigInt)
-    sdpParts.push(packInt(10, this.iServerTimeMS));
+    if (a.iServerTimeMS) sdpParts.push(packInt(10, BigInt(a.iServerTimeMS)));
 
-    // Tag 11 - 14
-    sdpParts.push(packInt(11, this.bLocalZoneHasMerged ? 1 : 0)); // bLocalZoneHasMerged
-    sdpParts.push(packInt(12, this.bNewAccount ? 1 : 0)); // bNewAccount
-    sdpParts.push(packInt(13, this.iAccountFlag)); // iAccountFlag
-    sdpParts.push(packInt(14, this.uiCreateAlt)); // uiCreateAlt
+    // Tag 11-14
+    if (a.bLocalZoneHasMerged) sdpParts.push(packInt(11, 1)); // bLocalZoneHasMerged
+    if (a.bNewAccount) sdpParts.push(packInt(12, 1)); // bNewAccount
+    if (a.iAccountFlag) sdpParts.push(packInt(13, BigInt(a.iAccountFlag))); // iAccountFlag
+    if (a.uiCreateAlt) sdpParts.push(packInt(14, BigInt(a.uiCreateAlt))); // uiCreateAlt
+
+    // Tag 15: sIsp
+    if (a.sIsp) sdpParts.push(packString(15, a.sIsp));
+
+    // Tag 16: mapConfig (Map<String, String>)
+    if (a.mapConfig) emitMapStr(sdpParts, 16, a.mapConfig);
+
+    // Tag 17: stUnregInfo (CmdUnregInfo)
+    emitUnregInfo(sdpParts, a.stUnregInfo);
+
+    // Tag 18: sState
+    if (a.sState) sdpParts.push(packString(18, a.sState));
 
     // Tag 19: iAccCreateTime
-    sdpParts.push(packInt(19, this.iAccCreateTime));
+    if (a.iAccCreateTime) sdpParts.push(packInt(19, BigInt(a.iAccCreateTime)));
 
-    // --- TAG 20: vSimpleRoleInfo (List) ---
-    const tag20Header = writeTag(20, 5); // Type 5 = List
-    sdpParts.push(
-      Buffer.concat([
-        tag20Header,
-        Buffer.from([0x01]), // Jumlah item di dalam list
-      ]),
-    );
+    // Tag 20: vSimpleRoleInfo (List<SimpleRoleInfo>)
+    emitSimpleRoleList(sdpParts, 20, a.vSimpleRoleInfo);
 
-    sdpParts.push(Buffer.from([0x80, 0x80])); // StructEnd utama
+    // Tag 21: iTimeGmtOff (Int64, bisa negatif)
+    if (a.iTimeGmtOff) sdpParts.push(packInt(21, BigInt(a.iTimeGmtOff)));
+
+    // Tag 22: stUnbindData (CmdDeviceUnbindData)
+    if (a.stUnbindData) {
+      const u = a.stUnbindData;
+      sdpParts.push(Buffer.from([0x7e])); // StructBegin tag 22 (0x70 | 22)
+      if (u.iUnbindReason) sdpParts.push(packInt(0, BigInt(u.iUnbindReason)));
+      sdpParts.push(Buffer.from([0x80])); // StructEnd
+    }
+
+    // Tag 23: bIsFlowBack
+    if (a.bIsFlowBack) sdpParts.push(packInt(23, 1));
+    // Tag 24: mErrorParam (Map<String, String>)
+    if (a.mErrorParam) emitMapStr(sdpParts, 24, a.mErrorParam);
+    // Tag 25: mapConfigWithIntKey (Map<Integer, String>)
+    if (a.mapConfigWithIntKey) emitMapIntStr(sdpParts, 25, a.mapConfigWithIntKey);
+    // Tag 26: sLoginAccToken
+    if (a.sLoginAccToken) sdpParts.push(packString(26, a.sLoginAccToken));
+    // Tag 27: sMd5
+    if (a.sMd5) sdpParts.push(packString(27, a.sMd5));
+    // Tag 28: mapConfigV2 (Map<String, String>)
+    if (a.mapConfigV2) emitMapStr(sdpParts, 28, a.mapConfigV2);
+    // Tag 29: bClearLoginAccToken
+    if (a.bClearLoginAccToken) sdpParts.push(packInt(29, 1));
+    // Tag 30: iSharkResult
+    if (a.iSharkResult) sdpParts.push(packInt(30, BigInt(a.iSharkResult)));
+    // Tag 31: iNetEaseResult
+    if (a.iNetEaseResult) sdpParts.push(packInt(31, BigInt(a.iNetEaseResult)));
+    // Tag 32: iAccountServerFlag
+    if (a.iAccountServerFlag) sdpParts.push(packInt(32, BigInt(a.iAccountServerFlag)));
+
+    sdpParts.push(Buffer.from([0x80])); // StructEnd utama
     return Buffer.concat(sdpParts);
   }
 }
@@ -356,9 +580,11 @@ class Cmd_Login_GetZone_CS {
         cs[def.field] = f.type === sdp.T.STRING ? f.raw.toString("utf8") : "";
       } else if (def.type === "int" || def.type === "bool") {
         if (def.bigint) {
-          cs[def.field] = f.type === sdp.T.INT || f.type === sdp.T.NEG ? BigInt(f.v) : 0n;
+          cs[def.field] =
+            f.type === sdp.T.INT || f.type === sdp.T.NEG ? BigInt(f.v) : 0n;
         } else {
-          cs[def.field] = f.type === sdp.T.INT || f.type === sdp.T.NEG ? Number(f.v) : 0;
+          cs[def.field] =
+            f.type === sdp.T.INT || f.type === sdp.T.NEG ? Number(f.v) : 0;
         }
       }
     }
@@ -372,7 +598,8 @@ class Cmd_Login_GetZone_CS {
  */
 class Cmd_Login_GetZone_SC {
   constructor(account = DEFAULT_LOGIN_AUTH_ACCOUNT) {
-    const zone = (account && account.stZone) || DEFAULT_LOGIN_AUTH_ACCOUNT.stZone;
+    const zone =
+      (account && account.stZone) || DEFAULT_LOGIN_AUTH_ACCOUNT.stZone;
     this.vZoneList = [
       {
         iZoneId: zone.iZoneId ?? 1,
@@ -382,7 +609,7 @@ class Cmd_Login_GetZone_SC {
       },
     ];
     this.vRoleList = [];
-    this.iRegionId = account ? account.iRegionId ?? 0 : 0;
+    this.iRegionId = account ? (account.iRegionId ?? 0) : 0;
   }
 
   /** Bungkus field akun menjadi body SDP untuk Cmd_Login_GetZone_SC. */
@@ -492,7 +719,9 @@ function authAccountFromRow(row) {
     bNewAccount: !!row.b_new_account,
     iAccountFlag: row.i_account_flag ?? 2,
     uiCreateAlt: row.ui_create_alt ?? 0,
-    iServerTimeMS: row.i_server_time_ms ? BigInt(row.i_server_time_ms) : BigInt(Date.now()),
+    iServerTimeMS: row.i_server_time_ms
+      ? BigInt(row.i_server_time_ms)
+      : BigInt(Date.now()),
   };
 }
 
@@ -505,10 +734,10 @@ function registerAuthAccount(account) {
     account.sAccountName || "",
     account.sAuthKey || "",
     account.sSessionKey || "",
-    account.stZone ? account.stZone.iZoneId ?? 1 : 1,
+    account.stZone ? (account.stZone.iZoneId ?? 1) : 1,
     account.stZone ? account.stZone.sZoneName || "" : "",
-    account.stZone ? account.stZone.iStatus ?? 1 : 1,
-    account.stZone ? account.stZone.iFlag ?? 0 : 0,
+    account.stZone ? (account.stZone.iStatus ?? 1) : 1,
+    account.stZone ? (account.stZone.iFlag ?? 0) : 0,
     account.sCountry || "",
     account.sUserIP || "",
     account.iRegionId ?? 0,
@@ -582,7 +811,9 @@ function createAuthAccount(cs) {
     cs.uiCreateAlt || 0,
     Date.now(),
   );
-  const row = AUTH_DB.prepare("SELECT * FROM auth_accounts WHERE i_account_id = ?").get(info.lastInsertRowid);
+  const row = AUTH_DB.prepare(
+    "SELECT * FROM auth_accounts WHERE i_account_id = ?",
+  ).get(info.lastInsertRowid);
   return authAccountFromRow(row);
 }
 
@@ -635,7 +866,7 @@ function buildLoginCheckUpgradeSC(
   sdpParts.push(packString(1, connServer));
 
   // Tag 2: sClientVersion = 2.2.16.1235.1
-  sdpParts.push(packString(2, "2.2.30.1250.1"));
+  sdpParts.push(packString(2, "2.2.30.1154.1"));
 
   // Tag 3: sResPatchVersion = ""
   sdpParts.push(packString(3, ""));
