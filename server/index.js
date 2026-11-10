@@ -42,8 +42,9 @@ const {
   findAuthAccount,
   findAuthAccountById,
   createAuthAccount,
-  buildLoginGetBulletinSC,
+  Cmd_Login_CheckUpgrade_CS,
   buildLoginCheckUpgradeSC,
+  buildLoginGetBulletinSC,
   buildNetConnectSC,
 } = require("../auth-server");
 
@@ -437,7 +438,22 @@ function handleAuthOpcode(sock, opcode, seq, style, label, raw) {
     console.log(
       `[${label}] Cmd_Login_CheckUpgrade_CS -> Cmd_Login_CheckUpgrade_SC`,
     );
-    built = buildLoginCheckUpgradeSC(seq, `${SERVER_IP}:${ZONE_PORTS[0]}`);
+    // Urai body SDP dari request (probe zstd atau frame biasa) -> Cmd_Login_CheckUpgrade_CS
+    let csBody = null;
+    if (style === "probe") {
+      const inner = probeUnpack(raw);
+      const parsed = probeParseInner(inner);
+      csBody = parsed ? parsed.body : null;
+    } else {
+      csBody = sdp.parseFrame(raw).body;
+    }
+    const cs = Cmd_Login_CheckUpgrade_CS.fromSdpBody(csBody);
+    // Cari akun dari database berdasarkan iAccountId; fallback ke nilai CS.
+    const account = findAuthAccountById(cs.iAccountId) || undefined;
+    built = buildLoginCheckUpgradeSC(seq, {
+      connServer: `${SERVER_IP}:${ZONE_PORTS[0]}`,
+      iZoneId: (account && account.stZone && account.stZone.iZoneId) || cs.iZoneId,
+    });
   } else if (opcode === 0x70000701) {
     console.log(
       `[${label}] Cmd_Login_GetBulletin_CS -> Cmd_Login_GetBulletin_SC`,

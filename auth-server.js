@@ -175,6 +175,44 @@ function getZoneCsFieldDef(tag) {
 }
 
 /**
+ * Peta field Cmd_Login_CheckUpgrade_CS -> nomor tag SDP.
+ * Field pertama di dump.cs (iAccountId, offset 0x10) memakai tag 0 dan
+ * nomor tag naik satu per field declaration. vABTestExpParam adalah List.
+ */
+const CHECKUPGRADE_CS_TAG_FIELDS = [
+  { tag: 0, field: "iAccountId", type: "int" },
+  { tag: 1, field: "sSessionKey", type: "string" },
+  { tag: 2, field: "sClientVersion", type: "string" },
+  { tag: 3, field: "iZoneId", type: "int" },
+  { tag: 4, field: "sChannel", type: "string" },
+  { tag: 5, field: "sUserIP", type: "string" },
+  { tag: 6, field: "iAccCreateTime", type: "int" },
+  { tag: 7, field: "bHasAreaTag", type: "bool" },
+  { tag: 8, field: "sCountry", type: "string" },
+  { tag: 9, field: "iForceChangeAreaTagReason", type: "int" },
+  { tag: 10, field: "iRoleLevel", type: "int" },
+  { tag: 11, field: "iMemTag", type: "int" },
+  { tag: 12, field: "iQuality", type: "int" },
+  { tag: 13, field: "sCreateRoleCountry", type: "string" },
+  { tag: 14, field: "vABTestExpParam", type: "list" },
+  { tag: 15, field: "sMd5", type: "string" },
+  { tag: 16, field: "iLoginId", type: "int" },
+  { tag: 17, field: "iMagic", type: "int" },
+  { tag: 18, field: "iOSType", type: "int" },
+  { tag: 19, field: "bOpenFilterModuleVersion", type: "bool" },
+  { tag: 20, field: "iSrcAppType", type: "int" },
+  { tag: 21, field: "sUnityVersion", type: "string" },
+  { tag: 22, field: "iClientDecompressionType", type: "int" },
+  { tag: 23, field: "iClientSwitchFlag", type: "int" },
+  { tag: 24, field: "iClientBenchScrore", type: "int" },
+];
+
+/** Cari definisi field Cmd_Login_CheckUpgrade_CS per nomor tag SDP. */
+function getCheckUpgradeCsFieldDef(tag) {
+  return CHECKUPGRADE_CS_TAG_FIELDS.find((c) => c.tag === tag);
+}
+
+/**
  * Cmd_Login_Auth_CS: paket dari client (Cmd_Login_Auth_CS, opcode 0x70000101)
  * setelah diurai dari body SDP. Field yang tidak ada di body hanya diisi
  * default kosong, supaya pemanggilan dari field lain tetap aman.
@@ -593,6 +631,81 @@ class Cmd_Login_GetZone_CS {
 }
 
 /**
+ * Cmd_Login_CheckUpgrade_CS: paket dari client (Cmd_Login_CheckUpgrade_CS,
+ * opcode 0x70000501) setelah diurai dari body SDP. Field yang tidak ada di body
+ * hanya diisi default kosong, supaya pemanggilan dari field lain tetap aman.
+ */
+class Cmd_Login_CheckUpgrade_CS {
+  constructor() {
+    this.iAccountId = 0;
+    this.sSessionKey = "";
+    this.sClientVersion = "";
+    this.iZoneId = 0;
+    this.sChannel = "";
+    this.sUserIP = "";
+    this.iAccCreateTime = 0;
+    this.bHasAreaTag = false;
+    this.sCountry = "";
+    this.iForceChangeAreaTagReason = 0;
+    this.iRoleLevel = 0;
+    this.iMemTag = 0;
+    this.iQuality = 0;
+    this.sCreateRoleCountry = "";
+    this.vABTestExpParam = [];
+    this.sMd5 = "";
+    this.iLoginId = 0;
+    this.iMagic = 0;
+    this.iOSType = 0;
+    this.bOpenFilterModuleVersion = false;
+    this.iSrcAppType = 0;
+    this.sUnityVersion = "";
+    this.iClientDecompressionType = 0;
+    this.iClientSwitchFlag = 0;
+    this.iClientBenchScrore = 0;
+  }
+
+  /**
+   * Urai body SDP menjadi instance Cmd_Login_CheckUpgrade_CS.
+   * Body berbentuk root struct (tag 0) + StructEnd.
+   */
+  static fromSdpBody(body) {
+    const cs = new Cmd_Login_CheckUpgrade_CS();
+    if (!body) return cs;
+    let nodes;
+    try {
+      nodes = sdp.decode(body);
+    } catch (_) {
+      return cs;
+    }
+    const root = nodes[0];
+    if (!root || root.type !== sdp.T.STRUCT) return cs;
+    for (const f of root.fields) {
+      const def = getCheckUpgradeCsFieldDef(f.tag);
+      if (!def) continue;
+      if (def.type === "string") {
+        cs[def.field] = f.type === sdp.T.STRING ? f.raw.toString("utf8") : "";
+      } else if (def.type === "int" || def.type === "bool") {
+        cs[def.field] =
+          f.type === sdp.T.INT || f.type === sdp.T.NEG ? Number(f.v) : 0;
+      } else if (def.type === "list") {
+        const arr = [];
+        if (f.type === sdp.T.LIST && Array.isArray(f.items)) {
+          for (const it of f.items) {
+            arr.push(
+              it && it.type === sdp.T.STRING
+                ? it.raw.toString("utf8")
+                : String((it && it.v) ?? ""),
+            );
+          }
+        }
+        cs[def.field] = arr;
+      }
+    }
+    return cs;
+  }
+}
+
+/**
  * Cmd_Login_GetZone_SC: paket response untuk Cmd_Login_GetZone_CS.
  * Membawa daftar zone (vZoneList) dan role (vRoleList) untuk akun yang login.
  */
@@ -849,76 +962,118 @@ function buildLoginGetBulletinSC(seq) {
 }
 
 /**
+ * Emit struct CmdModuleVersion (dipakai list di dalam CmdLoginCheckUpgrade_SC).
+ */
+function emitModuleVersion(sdpParts, moduleInfo) {
+  if (!moduleInfo) return;
+  sdpParts.push(Buffer.from([0x70])); // StructBegin elemen list (tag 0)
+  if (moduleInfo.sModuleName) sdpParts.push(packString(0, moduleInfo.sModuleName));
+  if (moduleInfo.sModuleVersion) sdpParts.push(packString(1, moduleInfo.sModuleVersion));
+  if (moduleInfo.iDownloadMaxTime) sdpParts.push(packInt(2, BigInt(moduleInfo.iDownloadMaxTime)));
+  if (moduleInfo.bGrayReference) sdpParts.push(packInt(3, 1));
+  if (moduleInfo.sBasicVersion) sdpParts.push(packString(4, moduleInfo.sBasicVersion));
+  if (moduleInfo.iPriority) sdpParts.push(packInt(5, BigInt(moduleInfo.iPriority)));
+  if (moduleInfo.sClientPrivate) sdpParts.push(packString(6, moduleInfo.sClientPrivate));
+  if (moduleInfo.iConfigId) sdpParts.push(packInt(7, BigInt(moduleInfo.iConfigId)));
+  if (moduleInfo.iRoleLevelMax) sdpParts.push(packInt(8, BigInt(moduleInfo.iRoleLevelMax)));
+  if (moduleInfo.iRoleLevelMin) sdpParts.push(packInt(9, BigInt(moduleInfo.iRoleLevelMin)));
+  if (moduleInfo.iDownloadPriority) sdpParts.push(packInt(10, BigInt(moduleInfo.iDownloadPriority)));
+  if (moduleInfo.iIsLoginSend) sdpParts.push(packInt(11, BigInt(moduleInfo.iIsLoginSend)));
+  sdpParts.push(Buffer.from([0x80])); // StructEnd
+}
+
+/** Emit struct CmdABTestConfig. */
+function emitABTestConfig(sdpParts, cfg) {
+  if (!cfg) return;
+  sdpParts.push(Buffer.from([0x70])); // StructBegin elemen list (tag 0)
+  if (cfg.sParamName) sdpParts.push(packString(0, cfg.sParamName));
+  if (cfg.sParamValue) sdpParts.push(packString(1, cfg.sParamValue));
+  if (cfg.iExpiryDate) sdpParts.push(packInt(2, BigInt(cfg.iExpiryDate)));
+  sdpParts.push(Buffer.from([0x80])); // StructEnd
+}
+
+/** Emit CmdABTestInfo (List<CmdABTestConfig>). */
+function emitABTest(sdpParts, abTest) {
+  if (!abTest) return;
+  emitList(sdpParts, 0, abTest.vParam || [], emitABTestConfig);
+}
+
+/**
  * Cmd_Login_CheckUpgrade_SC dengan CDN Asli Moonton
  * Mengarahkan sConnServer ke port Zone 30101
  */
-function buildLoginCheckUpgradeSC(
-  seq,
-  connServer = `${SERVER_IP}:${ZONE_PORT}`,
-) {
-  const sdpParts = [];
-  sdpParts.push(Buffer.from([0x70])); // StructBegin
+class Cmd_Login_CheckUpgrade_SC {
+  constructor(opts = {}) {
+    this.iZoneId = opts.iZoneId ?? 57102;
+    this.sConnServer = opts.sConnServer ?? `${SERVER_IP}:${ZONE_PORT}`;
+    this.sClientVersion = opts.sClientVersion ?? "2.2.30.1154.1";
+    this.sResPatchVersion = opts.sResPatchVersion ?? "";
+    this.sResAllVersion = opts.sResAllVersion ?? "";
+    this.sCdnVersion = opts.sCdnVersion ?? "1";
+    this.sApkUpdateAddr = opts.sApkUpdateAddr ?? "https://www.taptap.io/app/33653913";
+    this.sForceVersion = opts.sForceVersion ?? "2.1.0";
+    this.sFaceCdnHost = opts.sFaceCdnHost ?? "";
+    this.sFaceUploadHost = opts.sFaceUploadHost ?? "";
+    this.sFaceCdnHostNew = opts.sFaceCdnHostNew ?? "";
+    const patchUrls =
+      "http://akmcdn.ml.youngjoygame.com/res_patch/;http://akmcdn.ml.youngjoygame.com/res_patch/;http://pldtcdn.ml.youngjoygame.com/res_patch/;http://wscdn.ml.youngjoygame.com/res_patch/";
+    const allUrls =
+      "http://akmcdn.ml.youngjoygame.com/res_version/;http://akmcdn.ml.youngjoygame.com/res_version/;http://pldtcdn.ml.youngjoygame.com/res_version/;http://wscdn.ml.youngjoygame.com/res_version/";
+    this.sResPatchVersionNew = opts.sResPatchVersionNew ?? patchUrls;
+    this.sResAllVersionNew = opts.sResAllVersionNew ?? allUrls;
+    this.sNewConnServerList = opts.sNewConnServerList ?? `${this.sConnServer};8.219.169.192:30102`;
+    this.iRetryNum = opts.iRetryNum ?? 3;
+    this.sSignature = opts.sSignature ?? "d659c5397a8f2a5b6f3489e546a389ca54fd28fc,eda6413c3e3a95492114fe07cd953ad897e40d1a";
+    this.sPhotoCdnHost = opts.sPhotoCdnHost ?? "";
+    this.sForceUpdateUrl = opts.sForceUpdateUrl ?? "https://www.taptap.io/app/33653913";
+    this.sCdnVersion = opts.sCdnVersion ?? "1";
+    this.sCdnHostNewResAllVersionArray = opts.sCdnHostNewResAllVersionArray ?? "";
+    this.sCdnHostNewResPatchVersionArray = opts.sCdnHostNewResPatchVersionArray ?? "";
+    this.vModuleVersion = opts.vModuleVersion ?? [];
+    this.iModuleVersionUpdateTime = opts.iModuleVersionUpdateTime ?? 0;
+    this.iAreaTag = opts.iAreaTag ?? 0;
+    this.stABTest = opts.stABTest ?? null;
+  }
 
-  // Tag 0: iZoneId = 57102
-  sdpParts.push(packInt(0, 57102));
+  /** Bungkus field CheckUpgrade menjadi body SDP. */
+  toSdpBody() {
+    const s = this;
+    const sdpParts = [];
+    sdpParts.push(Buffer.from([0x70])); // StructBegin
 
-  // Tag 1: sConnServer (diarahkan ke zone port kita)
-  sdpParts.push(packString(1, connServer));
+    if (s.iZoneId) sdpParts.push(packInt(0, BigInt(s.iZoneId)));
+    if (s.sConnServer) sdpParts.push(packString(1, s.sConnServer));
+    if (s.sClientVersion) sdpParts.push(packString(2, s.sClientVersion));
+    if (s.sResPatchVersion) sdpParts.push(packString(3, s.sResPatchVersion));
+    if (s.sResAllVersion) sdpParts.push(packString(4, s.sResAllVersion));
+    if (s.sCdnVersion) sdpParts.push(packString(5, s.sCdnVersion));
+    if (s.sApkUpdateAddr) sdpParts.push(packString(6, s.sApkUpdateAddr));
+    if (s.sForceVersion) sdpParts.push(packString(7, s.sForceVersion));
+    if (s.sFaceCdnHost) sdpParts.push(packString(8, s.sFaceCdnHost));
+    if (s.sFaceUploadHost) sdpParts.push(packString(9, s.sFaceUploadHost));
+    if (s.sFaceCdnHostNew) sdpParts.push(packString(10, s.sFaceCdnHostNew));
+    if (s.sResPatchVersionNew) sdpParts.push(packString(11, s.sResPatchVersionNew));
+    if (s.sResAllVersionNew) sdpParts.push(packString(12, s.sResAllVersionNew));
+    if (s.sNewConnServerList) sdpParts.push(packString(13, s.sNewConnServerList));
+    if (s.iRetryNum) sdpParts.push(packInt(14, BigInt(s.iRetryNum)));
+    if (s.sSignature) sdpParts.push(packString(15, s.sSignature));
+    if (s.sPhotoCdnHost) sdpParts.push(packString(16, s.sPhotoCdnHost));
+    if (s.sForceUpdateUrl) sdpParts.push(packString(17, s.sForceUpdateUrl));
+    if (s.sCdnVersion) sdpParts.push(packString(18, s.sCdnVersion));
+    if (s.sCdnHostNewResAllVersionArray) sdpParts.push(packString(19, s.sCdnHostNewResAllVersionArray));
+    if (s.sCdnHostNewResPatchVersionArray) sdpParts.push(packString(20, s.sCdnHostNewResPatchVersionArray));
+    emitList(sdpParts, 21, s.vModuleVersion, emitModuleVersion);
+    if (s.iModuleVersionUpdateTime) sdpParts.push(packInt(22, BigInt(s.iModuleVersionUpdateTime)));
+    if (s.iAreaTag) sdpParts.push(packInt(23, BigInt(s.iAreaTag)));
+    if (s.stABTest) emitABTest(sdpParts, s.stABTest);
+    sdpParts.push(Buffer.from([0x80])); // StructEnd
+    return Buffer.concat(sdpParts);
+  }
+}
 
-  // Tag 2: sClientVersion = 2.2.16.1235.1
-  sdpParts.push(packString(2, "2.2.30.1154.1"));
-
-  // Tag 3: sResPatchVersion = ""
-  sdpParts.push(packString(3, ""));
-
-  // Tag 4: sResAllVersion = ""
-  sdpParts.push(packString(4, ""));
-
-  // Tag 5: sCdnVersion = "1"
-  sdpParts.push(packString(5, "1"));
-
-  // Tag 6: sApkUpdateAddr
-  sdpParts.push(packString(6, "https://www.taptap.io/app/33653913"));
-
-  // Tag 7: sForceVersion = "2.2.29"
-  sdpParts.push(packString(7, "2.1.0"));
-
-  // Tag 8: sFaceCdnHost = ""
-  sdpParts.push(packString(8, ""));
-
-  // Tag 11: sResPatchVersionNew (CDN resmi Moonton)
-  const patchUrls =
-    "http://akmcdn.ml.youngjoygame.com/res_patch/;http://akmcdn.ml.youngjoygame.com/res_patch/;http://pldtcdn.ml.youngjoygame.com/res_patch/;http://wscdn.ml.youngjoygame.com/res_patch/";
-  sdpParts.push(packString(11, patchUrls));
-
-  // Tag 12: sResAllVersionNew (CDN resmi Moonton)
-  const allUrls =
-    "http://akmcdn.ml.youngjoygame.com/res_version/;http://akmcdn.ml.youngjoygame.com/res_version/;http://pldtcdn.ml.youngjoygame.com/res_version/;http://wscdn.ml.youngjoygame.com/res_version/";
-  sdpParts.push(packString(12, allUrls));
-
-  // Tag 13: sNewConnServerList
-  sdpParts.push(packString(13, `${connServer};8.219.169.192:30102`));
-
-  // Tag 14: iRetryNum = 3
-  sdpParts.push(packInt(14, 3));
-
-  // Tag 15: sSignature
-  sdpParts.push(
-    packString(
-      15,
-      "d659c5397a8f2a5b6f3489e546a389ca54fd28fc,eda6413c3e3a95492114fe07cd953ad897e40d1a",
-    ),
-  );
-
-  // Tag 17: sForceUpdateUrl
-  sdpParts.push(packString(17, "https://www.taptap.io/app/33653913"));
-
-  // Tag 27: bFixCheckUpgrade = true (1)
-  sdpParts.push(packInt(27, 1));
-
-  sdpParts.push(Buffer.from([0x80, 0x80])); // StructEnd x2
-
-  const sdpBody = Buffer.concat(sdpParts);
+function buildLoginCheckUpgradeSC(seq, opts = {}) {
+  const sc = new Cmd_Login_CheckUpgrade_SC(opts);
+  const sdpBody = sc.toSdpBody();
   return packPacket(0x70000601, seq, sdpBody);
 }
 
