@@ -807,7 +807,11 @@ const DEFAULT_LOGIN_AUTH_ACCOUNT = {
  * tanpa dependensi npm baru). File: state/auth.db (diremote git, bukan bagian repo).
  * Setiap akun baru otomatis mendapat iAccountId berbeda (AUTOINCREMENT).
  */
-const AUTH_DB_PATH = path.join(__dirname, "state", "auth.db");
+const AUTH_DB_DIR = path.join(__dirname, "state");
+if (!fs.existsSync(AUTH_DB_DIR)) {
+  fs.mkdirSync(AUTH_DB_DIR, { recursive: true });
+}
+const AUTH_DB_PATH = path.join(AUTH_DB_DIR, "auth.db");
 const AUTH_DB = new DatabaseSync(AUTH_DB_PATH);
 AUTH_DB.exec(`CREATE TABLE IF NOT EXISTS auth_accounts (
   i_account_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -989,6 +993,346 @@ const BULLETIN_SDP_TEMPLATE = Buffer.from(
 
 function buildLoginGetBulletinSC(seq) {
   return packPacket(0x70000801, seq, BULLETIN_SDP_TEMPLATE);
+}
+
+/**
+ * Cmd_Login_Echo_SC (opcode 0x70000e01)
+ * Menjawab Cmd_Login_Echo_CS (opcode 0x70000d01).
+ * Mengembalikan frame SDP sederhana dengan struct root kosong.
+ */
+function buildLoginEchoSC(seq) {
+  const sdpBody = Buffer.from([0x70, 0x80, 0x80]);
+  return packPacket(0x70000e01, seq, sdpBody);
+}
+
+/**
+ * Struct CmdServerUpdateStr untuk vServerDataStr (tag 0 di Cmd_Login_GetLangAndCodeRepair_SC).
+ */
+function emitServerUpdateStr(sdpParts, item) {
+  if (!item) return;
+  sdpParts.push(Buffer.from([0x70])); // StructBegin item tag 0
+  if (item.iKey !== undefined) sdpParts.push(packInt(0, BigInt(item.iKey)));
+  if (item.sVal !== undefined) sdpParts.push(packString(1, item.sVal));
+  sdpParts.push(Buffer.from([0x80])); // StructEnd
+}
+
+/**
+ * Cmd_Login_GetLangAndCodeRepair_SC (opcode 0x7000be4e)
+ * Menjawab Cmd_Login_GetLangAndCodeRepair_CS (opcode 0x7000bd4e).
+ *
+ * Skema fields:
+ * - tag 0: vServerDataStr (list of struct CmdServerUpdateStr)
+ * - tag 1: vServerDataStrDel (list of int)
+ * - tag 2: iServerDataStrTimestamp (int)
+ * - tag 3: mLuaCodeFromServer (map<string, string>)
+ * - tag 4: stLuaCodeFromServerIncrUpdate (struct LuaCodeRefresh)
+ */
+class Cmd_Login_GetLangAndCodeRepair_SC {
+  constructor(opts = {}) {
+    this.vServerDataStr = opts.vServerDataStr || [];
+    this.vServerDataStrDel = opts.vServerDataStrDel || [];
+    this.iServerDataStrTimestamp = opts.iServerDataStrTimestamp ?? Math.floor(Date.now() / 1000);
+    this.mLuaCodeFromServer = opts.mLuaCodeFromServer || {};
+    this.stLuaCodeFromServerIncrUpdate = opts.stLuaCodeFromServerIncrUpdate || null;
+  }
+
+  toSdpBody() {
+    const s = this;
+    const sdpParts = [];
+    sdpParts.push(Buffer.from([0x70])); // StructBegin
+
+    // Tag 0: vServerDataStr
+    emitList(sdpParts, 0, s.vServerDataStr, emitServerUpdateStr);
+
+    // Tag 1: vServerDataStrDel
+    if (s.vServerDataStrDel && s.vServerDataStrDel.length > 0) {
+      sdpParts.push(writeTag(1, 5));
+      sdpParts.push(writeVarUint(s.vServerDataStrDel.length));
+      for (const id of s.vServerDataStrDel) {
+        sdpParts.push(packInt(0, BigInt(id)));
+      }
+    } else {
+      sdpParts.push(writeTag(1, 5), Buffer.from([0x00]));
+    }
+
+    // Tag 2: iServerDataStrTimestamp
+    if (s.iServerDataStrTimestamp) {
+      sdpParts.push(packInt(2, BigInt(s.iServerDataStrTimestamp)));
+    }
+
+    // Tag 3: mLuaCodeFromServer (map<string, string>)
+    if (s.mLuaCodeFromServer) {
+      emitMapStr(sdpParts, 3, s.mLuaCodeFromServer);
+    }
+
+    // Tag 4: stLuaCodeFromServerIncrUpdate (struct)
+    if (s.stLuaCodeFromServerIncrUpdate) {
+      sdpParts.push(Buffer.from([0x74])); // StructBegin tag 4
+      sdpParts.push(Buffer.from([0x80])); // StructEnd
+    }
+
+    sdpParts.push(Buffer.from([0x80])); // StructEnd utama
+    return Buffer.concat(sdpParts);
+  }
+}
+
+function buildLoginGetLangAndCodeRepairSC(seq, opts = {}) {
+  const sc = new Cmd_Login_GetLangAndCodeRepair_SC(opts);
+  const sdpBody = sc.toSdpBody();
+  return packPacket(0x7000be4e, seq, sdpBody);
+}
+
+// ----------------------------------------------------
+// 2c. ACTIVITY PACKETS (Cmd_Act_*)
+// ----------------------------------------------------
+
+/**
+ * Emit struct CmdActivityData untuk vActivity (tag 1 di Cmd_Act_GetListByStage_SC)
+ */
+function emitActivityData(sdpParts, item) {
+  if (!item) return;
+  sdpParts.push(Buffer.from([0x70])); // StructBegin item
+  if (item.iActivityId !== undefined) sdpParts.push(packInt(0, BigInt(item.iActivityId)));
+  if (item.sName !== undefined) sdpParts.push(packString(1, item.sName));
+  if (item.iType !== undefined) sdpParts.push(packInt(2, BigInt(item.iType)));
+  if (item.iStartTime !== undefined) sdpParts.push(packInt(3, BigInt(item.iStartTime)));
+  if (item.iEndTime !== undefined) sdpParts.push(packInt(4, BigInt(item.iEndTime)));
+  sdpParts.push(Buffer.from([0x80])); // StructEnd
+}
+
+/**
+ * Emit struct CmdActivityBriefData untuk vBriefActivity (tag 5 di Cmd_Act_GetListByStage_SC)
+ */
+function emitActivityBriefData(sdpParts, item) {
+  if (!item) return;
+  sdpParts.push(Buffer.from([0x70])); // StructBegin item
+  if (item.iActivityId !== undefined) sdpParts.push(packInt(0, BigInt(item.iActivityId)));
+  if (item.iStatus !== undefined) sdpParts.push(packInt(1, BigInt(item.iStatus)));
+  sdpParts.push(Buffer.from([0x80])); // StructEnd
+}
+
+/**
+ * Emit struct CmdActivityDiffData untuk vActivityDiffData (tag 7 di Cmd_Act_GetListByStage_SC)
+ */
+function emitActivityDiffData(sdpParts, item) {
+  if (!item) return;
+  sdpParts.push(Buffer.from([0x70])); // StructBegin item
+  if (item.iActivityId !== undefined) sdpParts.push(packInt(0, BigInt(item.iActivityId)));
+  sdpParts.push(Buffer.from([0x80])); // StructEnd
+}
+
+/**
+ * Cmd_Act_GetListByStage_SC (opcode 0x7000c8ea)
+ * Menjawab Cmd_Act_GetListByStage_CS (opcode 0x7000c7ea).
+ *
+ * Skema fields:
+ * - tag 0: iStageId (int)
+ * - tag 1: vActivity (list of CmdActivityData)
+ * - tag 2: iLastLanguageId (int)
+ * - tag 3: mActivitySpecialData (map<int, CmdActivitySpecialData>)
+ * - tag 4: iClientActivityVersion (int)
+ * - tag 5: vBriefActivity (list of CmdActivityBriefData)
+ * - tag 6: vBriefActivityIdList (list of int)
+ * - tag 7: vActivityDiffData (list of CmdActivityDiffData)
+ * - tag 8: iPageCur (int)
+ * - tag 9: iPageMax (int)
+ * - tag 10: sMd5PageCur (string)
+ */
+class Cmd_Act_GetListByStage_SC {
+  constructor(opts = {}) {
+    this.iStageId = opts.iStageId ?? 1;
+    this.vActivity = opts.vActivity || [];
+    this.iLastLanguageId = opts.iLastLanguageId ?? 0;
+    this.mActivitySpecialData = opts.mActivitySpecialData || null;
+    this.iClientActivityVersion = opts.iClientActivityVersion ?? 1;
+    this.vBriefActivity = opts.vBriefActivity || [];
+    this.vBriefActivityIdList = opts.vBriefActivityIdList || [];
+    this.vActivityDiffData = opts.vActivityDiffData || [];
+    this.iPageCur = opts.iPageCur ?? 1;
+    this.iPageMax = opts.iPageMax ?? 1;
+    this.sMd5PageCur = opts.sMd5PageCur || "";
+  }
+
+  toSdpBody() {
+    const s = this;
+    const sdpParts = [];
+    sdpParts.push(Buffer.from([0x70])); // StructBegin
+
+    // Tag 0: iStageId
+    if (s.iStageId !== undefined) sdpParts.push(packInt(0, BigInt(s.iStageId)));
+
+    // Tag 1: vActivity
+    emitList(sdpParts, 1, s.vActivity, emitActivityData);
+
+    // Tag 2: iLastLanguageId
+    if (s.iLastLanguageId) sdpParts.push(packInt(2, BigInt(s.iLastLanguageId)));
+
+    // Tag 3: mActivitySpecialData (map)
+    // Diisi bila ada; bila null/empty diabaikan sesuai aturan SDP
+
+    // Tag 4: iClientActivityVersion
+    if (s.iClientActivityVersion !== undefined) {
+      sdpParts.push(packInt(4, BigInt(s.iClientActivityVersion)));
+    }
+
+    // Tag 5: vBriefActivity
+    emitList(sdpParts, 5, s.vBriefActivity, emitActivityBriefData);
+
+    // Tag 6: vBriefActivityIdList
+    if (s.vBriefActivityIdList && s.vBriefActivityIdList.length > 0) {
+      sdpParts.push(writeTag(6, 5));
+      sdpParts.push(writeVarUint(s.vBriefActivityIdList.length));
+      for (const id of s.vBriefActivityIdList) sdpParts.push(packInt(0, BigInt(id)));
+    } else {
+      sdpParts.push(writeTag(6, 5), Buffer.from([0x00]));
+    }
+
+    // Tag 7: vActivityDiffData
+    emitList(sdpParts, 7, s.vActivityDiffData, emitActivityDiffData);
+
+    // Tag 8: iPageCur
+    if (s.iPageCur !== undefined) sdpParts.push(packInt(8, BigInt(s.iPageCur)));
+
+    // Tag 9: iPageMax
+    if (s.iPageMax !== undefined) sdpParts.push(packInt(9, BigInt(s.iPageMax)));
+
+    // Tag 10: sMd5PageCur
+    if (s.sMd5PageCur) sdpParts.push(packString(10, s.sMd5PageCur));
+
+    sdpParts.push(Buffer.from([0x80])); // StructEnd
+    return Buffer.concat(sdpParts);
+  }
+}
+
+function buildActGetListByStageSC(seq, opts = {}) {
+  const sc = new Cmd_Act_GetListByStage_SC(opts);
+  const sdpBody = sc.toSdpBody();
+  return packPacket(0x7000c8ea, seq, sdpBody);
+}
+
+/**
+ * Emit struct CmdActivityStatus untuk vStatus (tag 0 di Cmd_Act_GetStatusById_SC)
+ */
+function emitActivityStatus(sdpParts, item) {
+  if (!item) return;
+  sdpParts.push(Buffer.from([0x70])); // StructBegin item
+  if (item.iActivityId !== undefined) sdpParts.push(packInt(0, BigInt(item.iActivityId)));
+  if (item.iStatus !== undefined) sdpParts.push(packInt(1, BigInt(item.iStatus)));
+  if (item.iConditionVal !== undefined) sdpParts.push(packInt(2, BigInt(item.iConditionVal)));
+  if (item.bFinished !== undefined) sdpParts.push(packInt(3, item.bFinished ? 1n : 0n));
+  sdpParts.push(Buffer.from([0x80])); // StructEnd
+}
+
+/**
+ * Cmd_Act_GetStatusById_SC (opcode 0x7000b4ea)
+ * Menjawab Cmd_Act_GetStatusById_CS (opcode 0x7000b3ea).
+ *
+ * Skema fields:
+ * - tag 0: vStatus (list of struct CmdActivityStatus)
+ */
+class Cmd_Act_GetStatusById_SC {
+  constructor(opts = {}) {
+    this.vStatus = opts.vStatus || [];
+  }
+
+  toSdpBody() {
+    const s = this;
+    const sdpParts = [];
+    sdpParts.push(Buffer.from([0x70])); // StructBegin
+    emitList(sdpParts, 0, s.vStatus, emitActivityStatus);
+    sdpParts.push(Buffer.from([0x80])); // StructEnd
+    return Buffer.concat(sdpParts);
+  }
+}
+
+function buildActGetStatusByIdSC(seq, opts = {}) {
+  const sc = new Cmd_Act_GetStatusById_SC(opts);
+  const sdpBody = sc.toSdpBody();
+  return packPacket(0x7000b4ea, seq, sdpBody);
+}
+
+/**
+ * Emit struct Act_CityPingInfo untuk vecPing (tag 1 di Cmd_Act_CityPing_GetPing_SC)
+ */
+function emitCityPingInfo(sdpParts, item) {
+  if (!item) return;
+  sdpParts.push(Buffer.from([0x70])); // StructBegin item
+  if (item.iCityId !== undefined) sdpParts.push(packInt(0, BigInt(item.iCityId)));
+  if (item.iPing !== undefined) sdpParts.push(packInt(1, BigInt(item.iPing)));
+  sdpParts.push(Buffer.from([0x80])); // StructEnd
+}
+
+/**
+ * Cmd_Act_CityPing_GetPing_SC (opcode 0x7000f9ff)
+ * Menjawab Cmd_Act_CityPing_GetPing_CS (opcode 0x7000f8ff).
+ *
+ * Skema fields:
+ * - tag 0: iActivityId (int)
+ * - tag 1: vecPing (list of struct Act_CityPingInfo)
+ */
+class Cmd_Act_CityPing_GetPing_SC {
+  constructor(opts = {}) {
+    this.iActivityId = opts.iActivityId ?? 0;
+    this.vecPing = opts.vecPing || [];
+  }
+
+  toSdpBody() {
+    const s = this;
+    const sdpParts = [];
+    sdpParts.push(Buffer.from([0x70])); // StructBegin
+    if (s.iActivityId !== undefined) sdpParts.push(packInt(0, BigInt(s.iActivityId)));
+    emitList(sdpParts, 1, s.vecPing, emitCityPingInfo);
+    sdpParts.push(Buffer.from([0x80])); // StructEnd
+    return Buffer.concat(sdpParts);
+  }
+}
+
+function buildActCityPingGetPingSC(seq, opts = {}) {
+  const sc = new Cmd_Act_CityPing_GetPing_SC(opts);
+  const sdpBody = sc.toSdpBody();
+  return packPacket(0x7000f9ff, seq, sdpBody);
+}
+
+/**
+ * Emit struct ActThreadBindThreadBindConfig untuk vThreadBind (tag 1 di Cmd_Act_ThreadBind_getThreadBindData_SC)
+ */
+function emitThreadBindConfig(sdpParts, item) {
+  if (!item) return;
+  sdpParts.push(Buffer.from([0x70])); // StructBegin item
+  if (item.iThreadId !== undefined) sdpParts.push(packInt(0, BigInt(item.iThreadId)));
+  if (item.sUrl !== undefined) sdpParts.push(packString(1, item.sUrl));
+  sdpParts.push(Buffer.from([0x80])); // StructEnd
+}
+
+/**
+ * Cmd_Act_ThreadBind_getThreadBindData_SC (opcode 0x7000cb94)
+ * Menjawab Cmd_Act_ThreadBind_getThreadBindData_CS (opcode 0x7000ca94).
+ *
+ * Skema fields:
+ * - tag 0: iActivityId (int)
+ * - tag 1: vThreadBind (list of struct ActThreadBindThreadBindConfig)
+ */
+class Cmd_Act_ThreadBind_getThreadBindData_SC {
+  constructor(opts = {}) {
+    this.iActivityId = opts.iActivityId ?? 0;
+    this.vThreadBind = opts.vThreadBind || [];
+  }
+
+  toSdpBody() {
+    const s = this;
+    const sdpParts = [];
+    sdpParts.push(Buffer.from([0x70])); // StructBegin
+    if (s.iActivityId !== undefined) sdpParts.push(packInt(0, BigInt(s.iActivityId)));
+    emitList(sdpParts, 1, s.vThreadBind, emitThreadBindConfig);
+    sdpParts.push(Buffer.from([0x80])); // StructEnd
+    return Buffer.concat(sdpParts);
+  }
+}
+
+function buildActThreadBindGetThreadBindDataSC(seq, opts = {}) {
+  const sc = new Cmd_Act_ThreadBind_getThreadBindData_SC(opts);
+  const sdpBody = sc.toSdpBody();
+  return packPacket(0x7000cb94, seq, sdpBody);
 }
 
 /**
@@ -1301,6 +1645,17 @@ module.exports = {
   createAuthAccount,
   registerAuthAccount,
   buildLoginGetBulletinSC,
+  buildLoginEchoSC,
+  Cmd_Login_GetLangAndCodeRepair_SC,
+  buildLoginGetLangAndCodeRepairSC,
+  Cmd_Act_GetListByStage_SC,
+  buildActGetListByStageSC,
+  Cmd_Act_GetStatusById_SC,
+  buildActGetStatusByIdSC,
+  Cmd_Act_CityPing_GetPing_SC,
+  buildActCityPingGetPingSC,
+  Cmd_Act_ThreadBind_getThreadBindData_SC,
+  buildActThreadBindGetThreadBindDataSC,
   buildLoginCheckUpgradeSC,
   Cmd_Login_CheckUpgrade_CS,
   buildNetConnectSC,
