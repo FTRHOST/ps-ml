@@ -469,9 +469,15 @@ function handleAuthOpcode(sock, opcode, seq, style, label, raw) {
   }
 
   if (style === "probe") {
-    const parsed = sdp.parseFrame(built);
-    const inner = probeBuildInner(parsed.opcode, seq, parsed.body);
-    sock.write(probePack(inner));
+    // Response bila sudah dibungkus amplop zstd lewat packZstdReply -> langsung
+    // kirim; bila masih paket biasa -> bungkus via probeBuildInner + probePack.
+    if (built.length > 4 && built[0] === 0x10 && built[1] === 0x00) {
+      sock.write(built);
+    } else {
+      const parsed = sdp.parseFrame(built);
+      const inner = probeBuildInner(parsed.opcode, seq, parsed.body, Buffer.from([0x01]));
+      sock.write(probePack(inner));
+    }
   } else {
     sock.write(built);
   }

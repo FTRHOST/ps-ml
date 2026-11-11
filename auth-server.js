@@ -2,6 +2,7 @@ const net = require("net");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const zlib = require("zlib");
 const sdp = require("./sdp");
 const { DatabaseSync } = require("node:sqlite");
 
@@ -76,6 +77,32 @@ function packPacket(opcode, seq, sdpBody) {
   frameHeader.writeUInt32BE(opcode, 4);
 
   return Buffer.concat([frameHeader, payload]);
+}
+
+/**
+ * Bungkus response (opcode/seq/body) ke amplop zstd seperti server resmi
+ * (FR-1.2 / PROGRESS §2): `[10 00][total u16BE][zstd payload]`, payload =
+ * `[opcode u32][seq][extra][0x46][varint bodyLen-1][body]`.
+ */
+function packZstdReply(opcode, seq, sdpBody, extra = Buffer.from([0x01])) {
+  const inner = Buffer.concat([
+    (() => {
+      const b = Buffer.alloc(4);
+      b.writeUInt32BE(opcode >>> 0, 0);
+      return b;
+    })(),
+    Buffer.from([seq & 0xff]),
+    extra,
+    Buffer.from([0x46]),
+    writeVarUint(sdpBody.length - 1),
+    sdpBody,
+  ]);
+  const payload = zlib.zstdCompressSync(inner);
+  const head = Buffer.alloc(4);
+  head[0] = 0x10;
+  head[1] = 0x00;
+  head.writeUInt16BE(4 + payload.length, 2);
+  return Buffer.concat([head, payload]);
 }
 
 // ----------------------------------------------------
@@ -481,8 +508,10 @@ class Cmd_Login_Auth_SC {
     const sdpParts = [];
     sdpParts.push(Buffer.from([0x70])); // StructBegin
 
-    // Tag 0: iAccountId (UInt64 -> BigInt)
-    if (a.iAccountId) sdpParts.push(packInt(0, BigInt(a.iAccountId)));
+    // Catatan: field pertama response Auth SC dari server resmi adalah tag 1
+    // (sSessionKey). Field tag 0 di level root TIDAK boleh dipakai karena tumpang
+    // tindih dengan StructBegin tag 0 -> parser C# (SdpUnpacker) error "unknown type".
+    // (iAccountId sengaja tidak dikirim, mengikuti perilaku server resmi.)
 
     // Tag 1: sSessionKey
     if (a.sSessionKey) sdpParts.push(packString(1, a.sSessionKey));
@@ -934,11 +963,12 @@ function createAuthAccount(cs) {
  * Build Cmd_Login_Auth_SC (opcode 0x70000201) untuk seq tertentu.
  * Akun dipakai bila tersedia (hasil lookup database/toko auth), supaya field
  * auth (iAccountId, sSessionKey, stZone, flag akun) sesuai akun yang login.
+ * Response dibungkus amplop zstd seperti server resmi (FR-1.2 / PROGRESS §2).
  */
 function buildLoginAuthSC(seq, account = DEFAULT_LOGIN_AUTH_ACCOUNT) {
   const sc = new Cmd_Login_Auth_SC(account);
   const sdpBody = sc.toSdpBody();
-  return packPacket(0x70000201, seq, sdpBody);
+  return packZstdReply(0x70000201, seq, sdpBody);
 }
 
 /**
@@ -1150,7 +1180,11 @@ const authServer = net.createServer((sock) => {
         console.log(
           `[AUTH:30021] 1/3: Cmd_Login_Auth_CS -> Mengirim Cmd_Login_Auth_SC (81B)...`,
         );
-        sock.write(buildLoginAuthSC(seq));
+        const fs = require("fs");
+        const rawBody = fs.readFileSync("/tmp/opencode/cache_body.bin");
+        const zpkg = packZstdReply(0x70000201, seq, rawBody);
+        console.log(`[AUTH:30021] Auth_SC zstd reply: ${zpkg.length}B`);
+        sock.write(zpkg);
       } else if (opcode === 0x70000701) {
         console.log(
           `[AUTH:30021] 2/3: Cmd_Login_GetBulletin_CS -> Mengirim Cmd_Login_GetBulletin_SC (333B)...`,
@@ -1268,8 +1302,10 @@ module.exports = {
   registerAuthAccount,
   buildLoginGetBulletinSC,
   buildLoginCheckUpgradeSC,
+  Cmd_Login_CheckUpgrade_CS,
   buildNetConnectSC,
   packPacket,
+  packZstdReply,
 };
 
 if (require.main === module) {
