@@ -190,7 +190,13 @@ function hexdump(buf, maxLen = 128) {
 
 function zstdDecompress(buf) {
   try {
-    // stderr diabaikan: payload probe yang bukan zstd valid bukan kondisi error.
+    const zlib = require("zlib");
+    if (typeof zlib.zstdDecompressSync === "function") {
+      return zlib.zstdDecompressSync(buf);
+    }
+  } catch (_) {}
+  try {
+    // fallback CLI: stderr diabaikan
     return cp.execFileSync("zstd", ["-d", "-q"], {
       input: buf,
       maxBuffer: 64 * 1024 * 1024,

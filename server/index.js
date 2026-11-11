@@ -45,6 +45,12 @@ const {
   Cmd_Login_CheckUpgrade_CS,
   buildLoginCheckUpgradeSC,
   buildLoginGetBulletinSC,
+  buildLoginEchoSC,
+  buildLoginGetLangAndCodeRepairSC,
+  buildActGetListByStageSC,
+  buildActGetStatusByIdSC,
+  buildActCityPingGetPingSC,
+  buildActThreadBindGetThreadBindDataSC,
   buildNetConnectSC,
 } = require("../auth-server");
 
@@ -459,6 +465,11 @@ function handleAuthOpcode(sock, opcode, seq, style, label, raw) {
       `[${label}] Cmd_Login_GetBulletin_CS -> Cmd_Login_GetBulletin_SC`,
     );
     built = buildLoginGetBulletinSC(seq);
+  } else if (opcode === 0x70000d01) {
+    console.log(
+      `[${label}] Cmd_Login_Echo_CS -> Cmd_Login_Echo_SC`,
+    );
+    built = buildLoginEchoSC(seq);
   } else {
     console.log(
       `[${label}] opcode ${hex32(opcode)} tidak ditangani -> dicatat`,
@@ -507,6 +518,33 @@ function handleZoneOpcode(sock, opcode, seq, label, raw) {
   const respOpcode = (opcode + 0x100) >>> 0;
   const entry = REPLAY_CACHE.get(hex32(respOpcode));
   if (!entry) {
+    // Fallback standalone builders untuk opcode penting jika tidak ada cache (FR-4.1)
+    if (respOpcode === 0x7000be4e) { // Cmd_Login_GetLangAndCodeRepair_SC
+      console.log(`[${label}] Standalone Cmd_Login_GetLangAndCodeRepair_CS -> Cmd_Login_GetLangAndCodeRepair_SC (builder)`);
+      sock.write(buildLoginGetLangAndCodeRepairSC(seq));
+      return;
+    }
+    if (respOpcode === 0x7000c8ea) { // Cmd_Act_GetListByStage_SC
+      console.log(`[${label}] Standalone Cmd_Act_GetListByStage_CS -> Cmd_Act_GetListByStage_SC (builder)`);
+      sock.write(buildActGetListByStageSC(seq));
+      return;
+    }
+    if (respOpcode === 0x7000b4ea) { // Cmd_Act_GetStatusById_SC
+      console.log(`[${label}] Standalone Cmd_Act_GetStatusById_CS -> Cmd_Act_GetStatusById_SC (builder)`);
+      sock.write(buildActGetStatusByIdSC(seq));
+      return;
+    }
+    if (respOpcode === 0x7000f9ff) { // Cmd_Act_CityPing_GetPing_SC
+      console.log(`[${label}] Standalone Cmd_Act_CityPing_GetPing_CS -> Cmd_Act_CityPing_GetPing_SC (builder)`);
+      sock.write(buildActCityPingGetPingSC(seq));
+      return;
+    }
+    if (respOpcode === 0x7000cb94) { // Cmd_Act_ThreadBind_getThreadBindData_SC
+      console.log(`[${label}] Standalone Cmd_Act_ThreadBind_getThreadBindData_CS -> Cmd_Act_ThreadBind_getThreadBindData_SC (builder)`);
+      sock.write(buildActThreadBindGetThreadBindDataSC(seq));
+      return;
+    }
+
     console.log(
       `[${label}] cache miss ${hex32(opcode)} -> ${hex32(respOpcode)}`,
     );

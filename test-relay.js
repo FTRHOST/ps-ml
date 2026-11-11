@@ -20,8 +20,29 @@ const body1 = sdp.buildBody([sdp.node.int(0, 123), sdp.node.str(1, "halo")]);
 const body2 = sdp.buildBody([sdp.node.int(5, -45)]);
 const f1 = frame(0x70000101, 1, body1);
 const f2 = frame(0x70000701, 2, body2);
-// payload zstd ASLI dari capture cold-start (683B) supaya dekompress benar-benar diuji
-const zstdProbe = fs.readFileSync(path.join(FIXTURE, "auth-server-c1-p1-S2C.bin"));
+// payload zstd ASLI dari capture cold-start (683B) supaya dekompress benar-benar diuji;
+// bila file fixture eksternal belum ada, gunakan payload sintetis zstd yang valid
+let zstdProbe;
+const fixtureBin = path.join(FIXTURE, "auth-server-c1-p1-S2C.bin");
+if (fs.existsSync(fixtureBin)) {
+  zstdProbe = fs.readFileSync(fixtureBin);
+} else {
+  const zlib = require("zlib");
+  const innerPayload = Buffer.concat([
+    Buffer.from("70000201", "hex"), // opcode Cmd_Login_Auth_SC
+    Buffer.from([0x01]),             // seq 1
+    Buffer.from([0x01]),             // extra byte
+    Buffer.from([0x46]),             // s2c magic
+    sdp.writeVarUint(body2.length - 1),
+    body2,
+  ]);
+  const compressed = zlib.zstdCompressSync(innerPayload);
+  const head = Buffer.alloc(4);
+  head[0] = 0x10;
+  head[1] = 0x00;
+  head.writeUInt16BE(4 + compressed.length, 2);
+  zstdProbe = Buffer.concat([head, compressed]);
+}
 
 up.listen(UP_PORT, "127.0.0.1", () => {
   const relay = cp.spawn("node", ["relay.js"], {
