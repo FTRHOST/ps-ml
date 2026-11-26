@@ -31,7 +31,7 @@
 #     ulang `./tools/redirect.sh wifi`.
 set -euo pipefail
 
-PORTS=(30021 30071 30101 10003)   # Auth + Zone; beda versi klien beda port
+PORTS=(30021 30071 30101 10003 30103)   # Auth + Zone; beda versi klien beda port (incl. 161.202.206.34:30103)
 COMMENT="mlbb-local-server"       # penanda aturan milik skrip ini
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOTCMD="python3 ${SCRIPT_DIR}/rootcmd.py"

@@ -49,6 +49,17 @@ const {
 
 const MODE = (process.env.MODE || "replay").toLowerCase();
 
+// Template auth standalone (disematkan, tidak bergantung pada captures/).
+// Sumber: capture resmi terbaru; field dinamis disesuaikan saat render.
+const AUTH_SC_TEMPLATE = Buffer.from(
+  "EAACsii1L/1grgIlFQCWa5tEIIvqAQAMEFaQEiIwADBAEAS2FEAo2OtT2CjlbcjyZWWzWzrymmUOz/B6hueb+fjM7Xn5JGF5IfW/5Su4p4QbO20BogOUAIAAfwAaxjcB4YAk4SiBRWAQERIJDR0uZMA+Eh5WbKJbaCfdlZso7BYpu9WhXE6lCQVJMqFVwECBw4QAHJAElLkL1uQL1vKFy+QB4QuD4HLWsRKbj4SHr6FxbjTZEwpJa6tLLb2kcj84C9jCWDAcDx4tr+VFqV37S7/jdUWXi9r0HOkw0MytxS1dNXq71AZnswKw4MEwycMa+vNW5ZrjEHye2b3OOE5/virbvbKoWeDzMt29L/nPP6pnN+/QeJugKprmz9vek7f7t6z+vO2oSr8umfF5mQyDtwxnmod8zpJel/yTZE+16f+qsUaBuX1XXd5k3b6WOss0jC9Cpfvfqr6sNKicu9Wr6/9ZeeDxc6s75eV3Pcu/1gIvL8sZZzhbfB4fQVO0XUk8RU8qenrRlis+L7OtN03+9ZYFfBmXddjFVf25+UksN7m8aMsEvtyyvPU+f3df07erfsuWzzvV/bp+pbPqUfbzEM2yq97ygc/LZvd6d5/qLU98nmbxef6vWvVou011p6kv+dfovvi8TL/fl5r3tt1krxe2gGKTpWZzbG5kRsPgDO8wWMWZGLLjHbdpSA3FAGmDYqVExGzE42mEOU4iBnFIIiVr1EDpyFVyRitPmlqFwpRrHBnhETVqHumIQeGGA5PLAzWGWPRRcZj6PEEWeQoJOwjIORJX3YYpzMCljw8YYo2QnJmiageVCoEgSAQ5OiIoemzAzaeEcEHCNrwqEgQTADwKdfgAcFlnAG3Pw6rNxMCWrjU4WfvIkE+7QPPV46a2DQAri1aJBCBSKiLQKISo3aLQ",
+  "base64",
+);
+const CHECKUPGRADE_SC_TEMPLATE = Buffer.from(
+  "EAADkyi1L/1gxgktHABW7JREAJObAKMpRbaqUL0KULSmYKXe6OxNelX1/iKJsF67ZLdBG4nkyomfOB22t45zR622mFJKKaX/aRNOR0vYaZaJhOeGlzaFAIYAgADfpzvNsqHTqFTcmd5KIvyMLz3a+XH+h+KAKnUlDVHqzkTTHvehUCBQG3N0jQNQ6zZpc3FzpZFniiYvU6CVUECupMOtYeD3aWyfvBDETF4WN0fyPFJMae7DsBPwC0MWT4pXDTzW+R7nx48fsmBKl/OEzmjlx5cf3TrJ50GHj48jk1JVmo8v1MNIqEMv6ddLaLJJ2rb4+jAg5BEQOulQt2jQBUGAkHZN0n0z1vSsWcuu3Bt1/0xr1nPPbDq1WttXtuHXNlp1lvHUltadMZ2bHVX9G9Y3z5rlajUKIiGQzYTOK4Gn3ZJCBXQJNe7rYCxZqD8RuE8mTUp5GEgdyktFzhQ7LTNl0Bh2UsVIwAIPevs3s3gpM16R/ee9rsLSXIztlTLLWNbvfBljXQD3iojTmaci2pnmvr1iYSTlpVd5rVsUlgb01cdxlSc4/49pNWFJfw7+6bXmEr8Z4ZPK9yzCusw3hN/8l2LpV8SgQojng6kAbEBYs+Px53sIyKsPlY6xxfi66KW0bTxfCYmoEzAwlQGR0abl15vvtkd6G21Vq9jt1a5lq+3UDhAIaWKQmNnBEelheVzv0z61dMZKgOX8KnVY/l8C+o6DfGy+9F7PQa+c+ToOWW/I65/627Ckbyi+2HMN6x1fS0Ne2XGm8vOMC0RlUK/Xq8PA1DP9F9OFRQtI7FJ6/RbWuzsNgImoAUnF0BANAhAQkCAoAMAigKLqARKAMUiWpTiABRipEGAKgQCCCSAAgAAGBgaAHLZLSbUGAlENzSjiyHmkAkMebI545rc/57xj7vO/SqAYkvwZH0ceBj6xoSDR9Z2BSJzpHXoK5xURRXiJehSS8XTkjz9Uyh1d+vvO0xW2PEh1UUyehuopPLx5XmKElW/1UZUgJAz5MlwUAASaoQ+Sysiagw7kBoEOYmRPE5FBj4tF+fw/SbI0KBKsixRgPh7zy1ryBARUTPuejmchyAOwnd04DF4kqChiNrlEqUs/yB43im5Z3dE6tx4+cvzNtZm290kJirhSGS2RZWyMO0CusgF8J2EWBfG33FSz3m5Srd3NR247frJvD3QokPLBtfMgPJjPOgaK4KvJI0IU37ED",
+  "base64",
+);
+
 /**
  * Nilai diamond: env DIAMOND > state/profile.json > 2626.
  * Profil lokal membuat nilai default bisa diubah tanpa mengedit kode.
@@ -152,7 +163,7 @@ function parsePorts(value, fallback) {
     .filter((n) => Number.isInteger(n) && n > 0 && n < 65536);
 }
 const AUTH_PORTS = parsePorts(process.env.AUTH_PORT, "30021,30071");
-const ZONE_PORTS = parsePorts(process.env.ZONE_PORT, "30101,10003");
+const ZONE_PORTS = parsePorts(process.env.ZONE_PORT, "30101,10003,30103");
 
 const hex32 = (n) => "0x" + (n >>> 0).toString(16);
 
@@ -194,7 +205,7 @@ function probeParseInner(inner) {
   const seq = inner[4];
   const limit = Math.min(inner.length, 16);
   for (let pos = 5; pos < limit; pos++) {
-    if (inner[pos] !== 0x46) continue;
+    if (inner[pos] !== 0x45 && inner[pos] !== 0x46) continue;
     let r;
     try {
       r = sdp.readVarUint(inner, pos + 1);
@@ -372,6 +383,57 @@ function patchField(bodyBuf, fieldTag, value) {
     : patchTopLevelField(bodyBuf, fieldTag, value);
 }
 
+/**
+ * Patch biner terarah untuk Cmd_Role_Init_SC (tag 3 level, tag 11 diamond).
+ * Tidak bergantung pada decode penuh; field awal yang valid cukup untuk
+ * menemukan titik sisip (setelah tag 10) dan menimpa tag 3.
+ */
+function patchRoleInitBinary(bodyBuf, diamond, level) {
+  const T = sdp.T;
+  const fields = [];
+  let pos = 1; // lewati header struct (0x70)
+  while (pos < bodyBuf.length - 1) {
+    if (bodyBuf[pos] === 0x80) break; // StructEnd
+    let node, nx;
+    try {
+      [node, nx] = sdp.decodeNode(bodyBuf, pos);
+    } catch (_) {
+      fields.push({ tag: null, start: pos, end: bodyBuf.length - 1, raw: bodyBuf.subarray(pos, bodyBuf.length - 1) });
+      pos = bodyBuf.length - 1;
+      break;
+    }
+    fields.push({ tag: node.tag, start: pos, end: nx });
+    pos = nx;
+  }
+
+  const segments = [];
+  let hasDiamond = false;
+  for (const f of fields) {
+    if (f.tag === 3) {
+      segments.push(sdp.encodeNode({ tag: 3, type: T.INT, v: BigInt(level) }));
+    } else if (f.tag === 11) {
+      hasDiamond = true;
+      segments.push(sdp.encodeNode({ tag: 11, type: T.INT, v: BigInt(diamond) }));
+    } else if (f.raw) {
+      segments.push(f.raw);
+    } else {
+      segments.push(bodyBuf.subarray(f.start, f.end));
+    }
+  }
+
+  if (!hasDiamond) {
+    const diamondNode = sdp.encodeNode({ tag: 11, type: T.INT, v: BigInt(diamond) });
+    let idx = -1;
+    for (let i = 0; i < fields.length; i++) {
+      if (fields[i].tag !== null && fields[i].tag < 11) idx = i;
+    }
+    if (idx >= 0) segments.splice(idx + 1, 0, diamondNode);
+    else segments.unshift(diamondNode);
+  }
+
+  return Buffer.concat([Buffer.from([0x70]), ...segments, Buffer.from([0x80])]);
+}
+
 /** Render entri cache menjadi frame siap kirim dengan seq tertentu. */
 function renderFrame(entry, seq, newBody) {
   if (entry.kind === "plain") {
@@ -398,10 +460,69 @@ function renderFrame(entry, seq, newBody) {
 // Handler
 // ---------------------------------------------------------------------------
 function handleAuthOpcode(sock, opcode, seq, style, label, raw) {
+  const respOpcode = (opcode + 0x100) >>> 0;
+
+  // Template standalone untuk auth (disematkan, tidak bergantung pada captures/).
+  // Diambil dari capture resmi, lalu field dinamis disesuaikan saat render.
+  let templateBuf = null;
+  if (opcode === 0x70000101) templateBuf = AUTH_SC_TEMPLATE;
+  else if (opcode === 0x70000501) templateBuf = CHECKUPGRADE_SC_TEMPLATE;
+
+  if (templateBuf) {
+    const inner = probeUnpack(templateBuf);
+    const parsed = probeParseInner(inner);
+    const entry = {
+      kind: "probe",
+      opcode: parsed.opcode,
+      raw: templateBuf,
+      inner,
+      headerPos: parsed.headerPos,
+      body: parsed.body,
+    };
+    console.log(
+      `[${label}] ${hex32(opcode)} -> ${hex32(respOpcode)} (template standalone)`,
+    );
+    let body = null;
+    if (respOpcode === 0x70000201) {
+      body = patchStructField(entry.body, 10, Date.now());
+    } else if (respOpcode === 0x70000601) {
+      try {
+        const nodes = sdp.decode(entry.body);
+        const out = nodes.map((n) => {
+          if (n.type !== sdp.T.STRUCT) return n;
+          const fields = n.fields.map((f) => {
+            if (f.tag === 1 && f.type === sdp.T.STRING) {
+              return { ...f, raw: Buffer.from(`${SERVER_IP}:${ZONE_PORTS[0]}`, "utf8") };
+            }
+            if (f.tag === 2 && f.type === sdp.T.STRING) {
+              return {
+                ...f,
+                raw: Buffer.from(
+                  process.env.CLIENT_VERSION || "2.2.30.1256.1",
+                  "utf8",
+                ),
+              };
+            }
+            if (f.tag === 13 && f.type === sdp.T.STRING) {
+              return { ...f, raw: Buffer.from(`${SERVER_IP}:${ZONE_PORTS[0]}`, "utf8") };
+            }
+            return { ...f };
+          });
+          return { ...n, fields };
+        });
+        body = sdp.encode(out);
+      } catch (_) {
+        body = null;
+      }
+    }
+    sock.write(renderFrame(entry, seq, body));
+    return;
+  }
+
+  // Fallback (bila template tidak ada): builder lama.
   let built = null;
   if (opcode === 0x70000101) {
     console.log(`[${label}] Cmd_Login_Auth_CS -> Cmd_Login_Auth_SC`);
-    // Urai body SDP dari request (probe zstd atau frame biasa) -> Cmd_Login_Auth_CS
     let csBody = null;
     if (style === "probe") {
       const inner = probeUnpack(raw);
@@ -415,7 +536,6 @@ function handleAuthOpcode(sock, opcode, seq, style, label, raw) {
     built = buildLoginAuthSC(seq, account);
   } else if (opcode === 0x70000301) {
     console.log(`[${label}] Cmd_Login_GetZone_CS -> Cmd_Login_GetZone_SC`);
-    // Urai body SDP dari request (probe zstd atau frame biasa) -> Cmd_Login_GetZone_CS
     let csBody = null;
     if (style === "probe") {
       const inner = probeUnpack(raw);
@@ -425,7 +545,6 @@ function handleAuthOpcode(sock, opcode, seq, style, label, raw) {
       csBody = sdp.parseFrame(raw).body;
     }
     const cs = Cmd_Login_GetZone_CS.fromSdpBody(csBody);
-    // Cari akun berdasarkan iAccountId di database; fallback ke zone default.
     const account = findAuthAccountById(cs.iAccountId);
     if (!account) {
       console.log(
@@ -499,8 +618,10 @@ function handleZoneOpcode(sock, opcode, seq, label, raw) {
     body = patchStructField(entry.body, SERVER_TIME_TAG, Date.now());
   }
   if (MODE === "emulate" && respOpcode === ROLE_INIT_SC) {
-    body = patchField(body || entry.body, DIAMOND_TAG, DIAMOND);
-    body = patchField(body, LEVEL_TAG, LEVEL);
+    // Body role init pada capture baru tidak selalu bisa di-decode utuh oleh
+    // sdp.js (ada field yang membuat parser berhenti). Pakai patch biner
+    // terarah supaya diamond/level tetap disisipkan tanpa decode penuh.
+    body = patchRoleInitBinary(body || entry.body, DIAMOND, LEVEL);
     console.log(
       `[${label}] override iDiamond=${DIAMOND} iLevel=${LEVEL} pada Cmd_Role_Init_SC`,
     );
@@ -703,6 +824,7 @@ module.exports = {
   patchStructField,
   patchTopLevelField,
   patchField,
+  patchRoleInitBinary,
   renderFrame,
   probeUnpack,
   probeParseInner,

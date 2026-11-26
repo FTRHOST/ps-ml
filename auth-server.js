@@ -17,7 +17,7 @@ const { DatabaseSync } = require("node:sqlite");
  */
 
 const AUTH_PORT = 30021;
-const ZONE_PORT = 30101;
+const ZONE_PORT = 30103;
 const HOST = "0.0.0.0";
 const SERVER_IP = process.env.SERVER_IP || "0.0.0.0";
 
@@ -230,7 +230,8 @@ class Cmd_Login_Auth_CS {
       if (def.type === "string") {
         cs[def.field] = f.type === sdp.T.STRING ? f.raw.toString("utf8") : "";
       } else if (def.type === "int" || def.type === "bool") {
-        cs[def.field] = f.type === sdp.T.INT || f.type === sdp.T.NEG ? Number(f.v) : 0;
+        cs[def.field] =
+          f.type === sdp.T.INT || f.type === sdp.T.NEG ? Number(f.v) : 0;
       }
     }
     return cs;
@@ -356,9 +357,11 @@ class Cmd_Login_GetZone_CS {
         cs[def.field] = f.type === sdp.T.STRING ? f.raw.toString("utf8") : "";
       } else if (def.type === "int" || def.type === "bool") {
         if (def.bigint) {
-          cs[def.field] = f.type === sdp.T.INT || f.type === sdp.T.NEG ? BigInt(f.v) : 0n;
+          cs[def.field] =
+            f.type === sdp.T.INT || f.type === sdp.T.NEG ? BigInt(f.v) : 0n;
         } else {
-          cs[def.field] = f.type === sdp.T.INT || f.type === sdp.T.NEG ? Number(f.v) : 0;
+          cs[def.field] =
+            f.type === sdp.T.INT || f.type === sdp.T.NEG ? Number(f.v) : 0;
         }
       }
     }
@@ -372,7 +375,8 @@ class Cmd_Login_GetZone_CS {
  */
 class Cmd_Login_GetZone_SC {
   constructor(account = DEFAULT_LOGIN_AUTH_ACCOUNT) {
-    const zone = (account && account.stZone) || DEFAULT_LOGIN_AUTH_ACCOUNT.stZone;
+    const zone =
+      (account && account.stZone) || DEFAULT_LOGIN_AUTH_ACCOUNT.stZone;
     this.vZoneList = [
       {
         iZoneId: zone.iZoneId ?? 1,
@@ -382,7 +386,7 @@ class Cmd_Login_GetZone_SC {
       },
     ];
     this.vRoleList = [];
-    this.iRegionId = account ? account.iRegionId ?? 0 : 0;
+    this.iRegionId = account ? (account.iRegionId ?? 0) : 0;
   }
 
   /** Bungkus field akun menjadi body SDP untuk Cmd_Login_GetZone_SC. */
@@ -492,7 +496,9 @@ function authAccountFromRow(row) {
     bNewAccount: !!row.b_new_account,
     iAccountFlag: row.i_account_flag ?? 2,
     uiCreateAlt: row.ui_create_alt ?? 0,
-    iServerTimeMS: row.i_server_time_ms ? BigInt(row.i_server_time_ms) : BigInt(Date.now()),
+    iServerTimeMS: row.i_server_time_ms
+      ? BigInt(row.i_server_time_ms)
+      : BigInt(Date.now()),
   };
 }
 
@@ -505,10 +511,10 @@ function registerAuthAccount(account) {
     account.sAccountName || "",
     account.sAuthKey || "",
     account.sSessionKey || "",
-    account.stZone ? account.stZone.iZoneId ?? 1 : 1,
+    account.stZone ? (account.stZone.iZoneId ?? 1) : 1,
     account.stZone ? account.stZone.sZoneName || "" : "",
-    account.stZone ? account.stZone.iStatus ?? 1 : 1,
-    account.stZone ? account.stZone.iFlag ?? 0 : 0,
+    account.stZone ? (account.stZone.iStatus ?? 1) : 1,
+    account.stZone ? (account.stZone.iFlag ?? 0) : 0,
     account.sCountry || "",
     account.sUserIP || "",
     account.iRegionId ?? 0,
@@ -582,7 +588,9 @@ function createAuthAccount(cs) {
     cs.uiCreateAlt || 0,
     Date.now(),
   );
-  const row = AUTH_DB.prepare("SELECT * FROM auth_accounts WHERE i_account_id = ?").get(info.lastInsertRowid);
+  const row = AUTH_DB.prepare(
+    "SELECT * FROM auth_accounts WHERE i_account_id = ?",
+  ).get(info.lastInsertRowid);
   return authAccountFromRow(row);
 }
 
@@ -635,7 +643,7 @@ function buildLoginCheckUpgradeSC(
   sdpParts.push(packString(1, connServer));
 
   // Tag 2: sClientVersion = 2.2.16.1235.1
-  sdpParts.push(packString(2, "2.2.30.1250.1"));
+  sdpParts.push(packString(2, "2.2.30.1256.1"));
 
   // Tag 3: sResPatchVersion = ""
   sdpParts.push(packString(3, ""));

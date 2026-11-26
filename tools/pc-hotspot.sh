@@ -33,7 +33,7 @@ HOSTAPD_CONF="/tmp/opencode/hostapd-pc.conf"
 HOSTAPD_PID="/tmp/opencode/hostapd-pc.pid"
 DNSMASQ_PID="/tmp/opencode/dnsmasq-pc.pid"
 COMMENT="mlbb-pc-hotspot"
-SERVER_PORTS="30021 30071 30101 10003"
+SERVER_PORTS="30021 30071 30101 10003 30103"
 
 write_hostapd_conf() {
   cat > "$HOSTAPD_CONF" <<EOF

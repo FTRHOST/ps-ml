@@ -52,7 +52,7 @@ function parsePorts(value, fallback) {
     .filter((n) => Number.isInteger(n) && n > 0 && n < 65536);
 }
 const AUTH_PORTS = parsePorts(process.env.AUTH_PORT, "30021,30071");
-const ZONE_PORTS = parsePorts(process.env.ZONE_PORT, "30101,10003");
+const ZONE_PORTS = parsePorts(process.env.ZONE_PORT, "30101,10003,30103");
 const CAPTURE_ROOT = path.join(__dirname, "captures");
 const DEBUG = !!(process.env.DEBUG || process.argv.includes("-v"));
 
@@ -73,7 +73,7 @@ const AUTH_UPSTREAM = parseAddr(
 );
 const ZONE_UPSTREAM = parseAddr(
   process.env.ZONE_UPSTREAM,
-  "148.153.165.215:10003",
+  "161.202.206.34:30103",
 );
 
 // Objek layanan dibuat sekali lalu dirujuk, supaya target zone bisa diperbarui
