@@ -62,6 +62,10 @@ const CHECKUPGRADE_SC_TEMPLATE = Buffer.from(
   "EAADkyi1L/1gxgktHABW7JREAJObAKMpRbaqUL0KULSmYKXe6OxNelX1/iKJsF67ZLdBG4nkyomfOB22t45zR622mFJKKaX/aRNOR0vYaZaJhOeGlzaFAIYAgADfpzvNsqHTqFTcmd5KIvyMLz3a+XH+h+KAKnUlDVHqzkTTHvehUCBQG3N0jQNQ6zZpc3FzpZFniiYvU6CVUECupMOtYeD3aWyfvBDETF4WN0fyPFJMae7DsBPwC0MWT4pXDTzW+R7nx48fsmBKl/OEzmjlx5cf3TrJ50GHj48jk1JVmo8v1MNIqEMv6ddLaLJJ2rb4+jAg5BEQOulQt2jQBUGAkHZN0n0z1vSsWcuu3Bt1/0xr1nPPbDq1WttXtuHXNlp1lvHUltadMZ2bHVX9G9Y3z5rlajUKIiGQzYTOK4Gn3ZJCBXQJNe7rYCxZqD8RuE8mTUp5GEgdyktFzhQ7LTNl0Bh2UsVIwAIPevs3s3gpM16R/ee9rsLSXIztlTLLWNbvfBljXQD3iojTmaci2pnmvr1iYSTlpVd5rVsUlgb01cdxlSc4/49pNWFJfw7+6bXmEr8Z4ZPK9yzCusw3hN/8l2LpV8SgQojng6kAbEBYs+Px53sIyKsPlY6xxfi66KW0bTxfCYmoEzAwlQGR0abl15vvtkd6G21Vq9jt1a5lq+3UDhAIaWKQmNnBEelheVzv0z61dMZKgOX8KnVY/l8C+o6DfGy+9F7PQa+c+ToOWW/I65/627Ckbyi+2HMN6x1fS0Ne2XGm8vOMC0RlUK/Xq8PA1DP9F9OFRQtI7FJ6/RbWuzsNgImoAUnF0BANAhAQkCAoAMAigKLqARKAMUiWpTiABRipEGAKgQCCCSAAgAAGBgaAHLZLSbUGAlENzSjiyHmkAkMebI545rc/57xj7vO/SqAYkvwZH0ceBj6xoSDR9Z2BSJzpHXoK5xURRXiJehSS8XTkjz9Uyh1d+vvO0xW2PEh1UUyehuopPLx5XmKElW/1UZUgJAz5MlwUAASaoQ+Sysiagw7kBoEOYmRPE5FBj4tF+fw/SbI0KBKsixRgPh7zy1ryBARUTPuejmchyAOwnd04DF4kqChiNrlEqUs/yB43im5Z3dE6tx4+cvzNtZm290kJirhSGS2RZWyMO0CusgF8J2EWBfG33FSz3m5Srd3NR247frJvD3QokPLBtfMgPJjPOgaK4KvJI0IU37ED",
   "base64",
 );
+const ROLE_INIT_SC_TEMPLATE = Buffer.from(
+  "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",
+  "base64",
+);
 
 /**
  * Nilai diamond: env DIAMOND > state/profile.json > 2626.
@@ -649,7 +653,20 @@ function handleZoneOpcode(sock, opcode, seq, label, raw) {
   if (NO_REPLY.has(opcode >>> 0)) return; // fire-and-forget
 
   const respOpcode = (opcode + 0x100) >>> 0;
-  const entry = REPLAY_CACHE.get(hex32(respOpcode));
+  let entry = REPLAY_CACHE.get(hex32(respOpcode));
+  // Role_Init standalone: pakai template disematkan, bukan capture file.
+  if (respOpcode === ROLE_INIT_SC && ROLE_INIT_SC_TEMPLATE) {
+    const inner = probeUnpack(ROLE_INIT_SC_TEMPLATE);
+    const parsed = probeParseInner(inner);
+    entry = {
+      kind: "probe",
+      opcode: parsed.opcode,
+      raw: ROLE_INIT_SC_TEMPLATE,
+      inner,
+      headerPos: parsed.headerPos,
+      body: parsed.body,
+    };
+  }
   if (!entry) {
     console.log(
       `[${label}] cache miss ${hex32(opcode)} -> ${hex32(respOpcode)}`,
@@ -690,8 +707,9 @@ function handleZoneOpcode(sock, opcode, seq, label, raw) {
     } catch (_) {
       // biarkan fallback ke CURRENT_ACCOUNT
     }
-    const accountId = account ? Number(account.iAccountId || 0) : 0;
-    const name = accountId > 0 ? `petwir${String(accountId).padStart(2, "0")}` : null;
+    let accountId = account ? Number(account.iAccountId || 0) : 0;
+    if (!accountId) accountId = 1;
+    const name = `petwir${String(accountId).padStart(2, "0")}`;
     body = patchRoleInitBinary(body || entry.body, DIAMOND, LEVEL, accountId, name);
     console.log(
       `[${label}] override iUid=${accountId} sName=${name} iDiamond=${DIAMOND} iLevel=${LEVEL} pada Cmd_Role_Init_SC`,
