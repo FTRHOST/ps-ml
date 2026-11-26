@@ -42,7 +42,6 @@ const {
   findAuthAccount,
   findAuthAccountById,
   createAuthAccount,
-  getLastAuthAccount,
   buildLoginGetBulletinSC,
   buildLoginCheckUpgradeSC,
   buildNetConnectSC,
@@ -172,6 +171,15 @@ function parsePorts(value, fallback) {
 }
 const AUTH_PORTS = parsePorts(process.env.AUTH_PORT, "30021,30071");
 const ZONE_PORTS = parsePorts(process.env.ZONE_PORT, "30101,10003,30103");
+
+function parseAddr(value, fallback) {
+  const s = String(value || fallback);
+  const i = s.lastIndexOf(":");
+  if (i < 0) return { host: s, port: 30000 };
+  return { host: s.slice(0, i), port: Number(s.slice(i + 1)) };
+}
+const AUTH_UPSTREAM = parseAddr(process.env.AUTH_UPSTREAM, "login.ml.youngjoygame.com:30021");
+const ZONE_UPSTREAM = parseAddr(process.env.ZONE_UPSTREAM, "161.202.206.34:30103");
 
 const hex32 = (n) => "0x" + (n >>> 0).toString(16);
 
@@ -513,13 +521,8 @@ function handleAuthOpcode(sock, opcode, seq, style, label, raw) {
         const cs = Cmd_Login_Auth_CS.fromSdpBody(csBody);
         let account = findAuthAccount(cs);
         if (!account) {
-          account = getLastAuthAccount();
-          if (account) {
-            console.log(`[AUTH] reuse akun terakhir id=${account.iAccountId} (akun baru tidak dibuat)`);
-          } else {
-            console.log(`[AUTH] akun baru: "${cs.sAccountName}" (tidak ditemukan di DB)`);
-            account = createAuthAccount(cs);
-          }
+          console.log(`[AUTH] akun baru: "${cs.sAccountName}" (tidak ditemukan di DB)`);
+          account = createAuthAccount(cs);
         } else {
           console.log(`[AUTH] akun ditemukan: id=${account.iAccountId} name="${cs.sAccountName}"`);
         }
@@ -594,10 +597,7 @@ function handleAuthOpcode(sock, opcode, seq, style, label, raw) {
       csBody = sdp.parseFrame(raw).body;
     }
     const cs = Cmd_Login_Auth_CS.fromSdpBody(csBody);
-    let account = findAuthAccount(cs);
-    if (!account) {
-      account = getLastAuthAccount() || createAuthAccount(cs);
-    }
+    const account = findAuthAccount(cs) || createAuthAccount(cs);
     CURRENT_ACCOUNT = account;
     built = buildLoginAuthSC(seq, account);
   } else if (opcode === 0x70000301) {
@@ -758,7 +758,46 @@ function handleZoneOpcode(sock, opcode, seq, label, raw) {
 /** Parser stream generik: mendukung frame biasa maupun amplop probe. */
 function makeZoneHandler(sock, label) {
   let buf = Buffer.alloc(0);
+
+  // Hybrid: koneksi ke server resmi untuk fallback paket unknown.
+  let upSock = null;
+  let upBuf = Buffer.alloc(0);
+  if (MODE === "hybrid") {
+    upSock = net.connect(ZONE_UPSTREAM.port, ZONE_UPSTREAM.host, () => {
+      console.log(`[${label}] hybrid upstream ${ZONE_UPSTREAM.host}:${ZONE_UPSTREAM.port}`);
+    });
+    upSock.on("data", (chunk) => {
+      upBuf = upBuf.length ? Buffer.concat([upBuf, chunk]) : chunk;
+      for (;;) {
+        if (upBuf.length < 4) break;
+        const total = probeTotal(upBuf);
+        if (total !== null) {
+          if (total < 4 || upBuf.length < total) break;
+          const pkt = upBuf.subarray(0, total);
+          upBuf = upBuf.subarray(total);
+          const inner = probeUnpack(pkt);
+          const p = inner ? probeParseInner(inner) : null;
+          const opcode = p ? p.opcode : null;
+          const known = opcode && REPLAY_CACHE.has(hex32(opcode));
+          if (!known && !sock.destroyed) sock.write(pkt);
+          continue;
+        }
+        const len = upBuf.readUInt32BE(0);
+        if (len < 9 || len > MAX_FRAME) { upBuf = Buffer.alloc(0); break; }
+        if (upBuf.length < len) break;
+        const pkt = upBuf.subarray(0, len);
+        upBuf = upBuf.subarray(len);
+        const opcode = pkt.readUInt32BE(4);
+        const known = REPLAY_CACHE.has(hex32(opcode));
+        if (!known && !sock.destroyed) sock.write(pkt);
+      }
+    });
+    upSock.on("error", (e) => console.log(`[${label}] hybrid upstream error: ${e.message}`));
+    upSock.on("close", () => { upSock = null; });
+  }
+
   sock.on("data", (chunk) => {
+    if (upSock && !upSock.destroyed) upSock.write(chunk);
     buf = buf.length ? Buffer.concat([buf, chunk]) : chunk;
     for (;;) {
       if (buf.length < 4) break;
@@ -799,11 +838,56 @@ function makeZoneHandler(sock, label) {
       handleZoneOpcode(sock, opcode, seq, label, packet);
     }
   });
+  sock.on("close", () => { if (upSock && !upSock.destroyed) upSock.destroy(); });
 }
 
 function makeAuthHandler(sock, label) {
   let buf = Buffer.alloc(0);
+
+  let upSock = null;
+  let upBuf = Buffer.alloc(0);
+  if (MODE === "hybrid") {
+    upSock = net.connect(AUTH_UPSTREAM.port, AUTH_UPSTREAM.host, () => {
+      console.log(`[${label}] hybrid upstream ${AUTH_UPSTREAM.host}:${AUTH_UPSTREAM.port}`);
+    });
+    upSock.on("data", (chunk) => {
+      upBuf = upBuf.length ? Buffer.concat([upBuf, chunk]) : chunk;
+      for (;;) {
+        if (upBuf.length < 4) break;
+        const total = probeTotal(upBuf);
+        if (total !== null) {
+          if (total < 4 || upBuf.length < total) break;
+          const pkt = upBuf.subarray(0, total);
+          upBuf = upBuf.subarray(total);
+          const inner = probeUnpack(pkt);
+          const p = inner ? probeParseInner(inner) : null;
+          const opcode = p ? p.opcode : null;
+          // Auth responses are all handled locally (template/builder), drop upstream.
+          if (opcode && !sock.destroyed) {
+            // drop known; forward unknown (none expected)
+            if (!REPLAY_CACHE.has(hex32(opcode))) {
+              sock.write(pkt);
+            }
+          } else if (!sock.destroyed) {
+            sock.write(pkt);
+          }
+          continue;
+        }
+        const len = upBuf.readUInt32BE(0);
+        if (len < 9 || len > MAX_FRAME) { upBuf = Buffer.alloc(0); break; }
+        if (upBuf.length < len) break;
+        const pkt = upBuf.subarray(0, len);
+        upBuf = upBuf.subarray(len);
+        const opcode = pkt.readUInt32BE(4);
+        if (!REPLAY_CACHE.has(hex32(opcode)) && !sock.destroyed) sock.write(pkt);
+      }
+    });
+    upSock.on("error", (e) => console.log(`[${label}] hybrid upstream error: ${e.message}`));
+    upSock.on("close", () => { upSock = null; });
+  }
+
   sock.on("data", (chunk) => {
+    if (upSock && !upSock.destroyed) upSock.write(chunk);
     buf = buf.length ? Buffer.concat([buf, chunk]) : chunk;
     for (;;) {
       if (buf.length < 4) break;
@@ -855,6 +939,7 @@ function makeAuthHandler(sock, label) {
       handleAuthOpcode(sock, opcode, seq, "plain", label, packet);
     }
   });
+  sock.on("close", () => { if (upSock && !upSock.destroyed) upSock.destroy(); });
 }
 
 // ---------------------------------------------------------------------------
@@ -883,8 +968,8 @@ async function main() {
     );
     process.exit(1);
   }
-  if (MODE !== "replay" && MODE !== "emulate") {
-    console.error(`[SERVER] MODE tidak dikenal: ${MODE}. Pakai replay|emulate`);
+  if (MODE !== "replay" && MODE !== "emulate" && MODE !== "hybrid") {
+    console.error(`[SERVER] MODE tidak dikenal: ${MODE}. Pakai replay|emulate|hybrid`);
     process.exit(1);
   }
 
