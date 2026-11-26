@@ -484,7 +484,10 @@ function handleAuthOpcode(sock, opcode, seq, style, label, raw) {
     );
     let body = null;
     if (respOpcode === 0x70000201) {
-      body = patchStructField(entry.body, 10, Date.now());
+      // iAccountId (tag 0) wajib non-zero; capture asli menghilangkannya
+      // (nilai 0) sehingga game mendeteksi account Uid = 0.
+      body = patchStructField(entry.body, 0, 1);
+      body = patchStructField(body, 10, Date.now());
     } else if (respOpcode === 0x70000601) {
       try {
         const nodes = sdp.decode(entry.body);
