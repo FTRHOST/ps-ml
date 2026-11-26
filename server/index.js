@@ -487,6 +487,8 @@ function handleAuthOpcode(sock, opcode, seq, style, label, raw) {
       // iAccountId (tag 0) diisi dari logika DB (find/create account),
       // bukan hardcode, supaya sesuai akun yang login.
       let accountId = 1;
+      let sessionKey = null;
+      let stZone = null;
       try {
         let csBody = null;
         if (style === "probe") {
@@ -499,10 +501,27 @@ function handleAuthOpcode(sock, opcode, seq, style, label, raw) {
         const cs = Cmd_Login_Auth_CS.fromSdpBody(csBody);
         const account = findAuthAccount(cs) || createAuthAccount(cs);
         accountId = Number(account.iAccountId || 1);
+        sessionKey = account.sSessionKey || null;
+        stZone = account.stZone || null;
       } catch (_) {
         accountId = 1;
       }
       body = patchStructField(entry.body, 0, accountId);
+      if (sessionKey) {
+        // Patch sSessionKey (tag 1) agar sesuai DB, seperti commit c32b3c0.
+        const nodes = sdp.decode(body);
+        const out = nodes.map((n) => {
+          if (n.type !== sdp.T.STRUCT) return n;
+          const fields = n.fields.map((f) => {
+            if (f.tag === 1 && f.type === sdp.T.STRING) {
+              return { ...f, raw: Buffer.from(sessionKey, "utf8") };
+            }
+            return { ...f };
+          });
+          return { ...n, fields };
+        });
+        body = sdp.encode(out);
+      }
       body = patchStructField(body, 10, Date.now());
     } else if (respOpcode === 0x70000601) {
       try {
