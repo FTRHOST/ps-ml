@@ -89,6 +89,19 @@ const LEVEL = Number(
   process.env.LEVEL !== undefined ? process.env.LEVEL : PROFILE.level || 6,
 );
 
+/**
+ * Nama role yang dipakai semua response lokal berbasis capture. Template resmi
+ * masih menyimpan `Fathir_Qepo`, jadi field sName/iUid harus ditimpa supaya
+ * layar menampilkan identitas lokal. Bisa diganti lewat env ROLE_NAME.
+ */
+const ROLE_NAME = process.env.ROLE_NAME || "petwir0x";
+/**
+ * Override identitas hanya untuk paket yang dilayani lokal (replay). Mode relay
+ * murni tidak mengubah byte; hybrid hanya meneruskan opcode yang TIDAK ada di
+ * cache, sehingga patch di sini tidak menyentuh trafik server resmi.
+ */
+const NAME_OVERRIDE = MODE === "emulate" || MODE === "hybrid";
+
 /** Opcode Cmd_Role_Init_SC: field iDiamond ada di tag 11 struct CmdRoleInfo. */
 const ROLE_INIT_SC = 0x7000f64e;
 const DIAMOND_TAG = 11;
@@ -455,6 +468,45 @@ function patchRoleInitBinary(bodyBuf, diamond, level, accountId, name) {
   return Buffer.concat([Buffer.from([0x70]), ...segments, Buffer.from([0x80])]);
 }
 
+/**
+ * Timpa semua string SDP yang masih memakai nama akun capture lama.
+ * Patch khusus (Role_Init/Role_Info/Account_Get) sudah menangani opcode utama,
+ * tetapi capture lain (Battle_GetBattleData, d666, dab8, feb8, fcb8, ...)
+ * juga menyimpan `Fathir_Qepo` dan bisa tampil di panel lain. Patch generik ini
+ * dijalankan terakhir supaya tidak ada nama lama yang lolos ke klien.
+ */
+const LEGACY_ROLE_NAME = Buffer.from("Fathir_Qepo", "utf8");
+
+function patchLegacyRoleName(bodyBuf, name) {
+  if (!bodyBuf || !name || !bodyBuf.includes(LEGACY_ROLE_NAME)) return bodyBuf;
+  try {
+    const replace = (n) => {
+      if (n.type === sdp.T.STRING) {
+        if (n.raw.includes(LEGACY_ROLE_NAME)) {
+          return { ...n, raw: Buffer.from(n.raw.toString("utf8").replace(/Fathir_Qepo/g, name), "utf8") };
+        }
+        return n;
+      }
+      if (n.type === sdp.T.STRUCT) {
+        return { ...n, fields: n.fields.map(replace) };
+      }
+      if (n.type === sdp.T.LIST) {
+        return { ...n, items: n.items.map(replace) };
+      }
+      if (n.type === sdp.T.MAP) {
+        return {
+          ...n,
+          entries: n.entries.map(([k, v]) => [replace(k), replace(v)]),
+        };
+      }
+      return n;
+    };
+    return sdp.encode(sdp.decode(bodyBuf).map(replace));
+  } catch (_) {
+    return bodyBuf;
+  }
+}
+
 /** Render entri cache menjadi frame siap kirim dengan seq tertentu. */
 function renderFrame(entry, seq, newBody) {
   if (entry.kind === "plain") {
@@ -697,7 +749,7 @@ function handleZoneOpcode(sock, opcode, seq, label, raw) {
     // terhadap klien makin besar setiap sesi (FR-3.2).
     body = patchStructField(entry.body, SERVER_TIME_TAG, Date.now());
   }
-  if (MODE === "emulate" && respOpcode === ROLE_INIT_SC) {
+  if (NAME_OVERRIDE && respOpcode === ROLE_INIT_SC) {
     // Cari akun dari request Role_Init (tag 8 = sAccountName) agar patch
     // tidak bergantung pada global CURRENT_ACCOUNT (bisa null pada koneksi awal).
     let account = CURRENT_ACCOUNT;
@@ -725,13 +777,13 @@ function handleZoneOpcode(sock, opcode, seq, label, raw) {
     }
     let accountId = account ? Number(account.iAccountId || 0) : 0;
     if (!accountId) accountId = 1;
-    const name = `petwir${String(accountId).padStart(2, "0")}`;
+    const name = ROLE_NAME;
     body = patchRoleInitBinary(body || entry.body, DIAMOND, LEVEL, accountId, name);
     console.log(
       `[${label}] override iUid=${accountId} sName=${name} iDiamond=${DIAMOND} iLevel=${LEVEL} pada Cmd_Role_Init_SC`,
     );
   }
-  if (MODE === "emulate" && respOpcode === ROLE_INFO_SC) {
+  if (NAME_OVERRIDE && respOpcode === ROLE_INFO_SC) {
     // Klien menyegarkan info role lewat opcode ini; tanpa patch, level kembali
     // ke nilai capture lama.
     body = patchField(body || entry.body, LEVEL_TAG, LEVEL);
@@ -739,7 +791,7 @@ function handleZoneOpcode(sock, opcode, seq, label, raw) {
     try {
       const acc = CURRENT_ACCOUNT;
       const aid = acc ? Number(acc.iAccountId || 1) : 1;
-      const nm = `petwir${String(aid).padStart(2, "0")}`;
+      const nm = ROLE_NAME;
       const nodes = sdp.decode(body || entry.body);
       const out = nodes.map((n) => {
         if (n.type !== sdp.T.STRUCT) return n;
@@ -758,11 +810,11 @@ function handleZoneOpcode(sock, opcode, seq, label, raw) {
     } catch (_) {}
     console.log(`[${label}] override iUid/sName/iLevel pada Cmd_Role_GetInfo_SC`);
   }
-  if (MODE === "emulate" && respOpcode === ACCOUNT_GET_SC) {
+  if (NAME_OVERRIDE && respOpcode === ACCOUNT_GET_SC) {
     try {
       const acc = CURRENT_ACCOUNT;
       const aid = acc ? Number(acc.iAccountId || 1) : 1;
-      const nm = `petwir${String(aid).padStart(2, "0")}`;
+      const nm = ROLE_NAME;
       const nodes = sdp.decode(body || entry.body);
       const out = nodes.map((n) => {
         if (n.type !== sdp.T.STRUCT) return n;
@@ -794,6 +846,7 @@ function handleZoneOpcode(sock, opcode, seq, label, raw) {
     } catch (_) {}
     console.log(`[${label}] override iUid/sName pada Cmd_Account_GetAccount_SC`);
   }
+  if (NAME_OVERRIDE) body = patchLegacyRoleName(body || entry.body, ROLE_NAME);
   sock.write(renderFrame(entry, seq, body));
 
   // Push lanjutan (bukan balasan request +0x100). Dikirim setelah respons utama
@@ -807,7 +860,12 @@ function handleZoneOpcode(sock, opcode, seq, label, raw) {
         `[${label}] push ${hex32(pushOpcode)} setelah ${hex32(opcode)}`,
       );
       setTimeout(() => {
-        if (!sock.destroyed) sock.write(renderFrame(pushEntry, seq));
+        if (!sock.destroyed) {
+          const pushBody = NAME_OVERRIDE
+            ? patchLegacyRoleName(pushEntry.body, ROLE_NAME)
+            : null;
+          sock.write(renderFrame(pushEntry, seq, pushBody));
+        }
       }, 80);
     }
   }
@@ -1032,6 +1090,9 @@ async function main() {
   }
 
   console.log(`[SERVER] cache replay: ${REPLAY_CACHE.size} opcode`);
+  if (NAME_OVERRIDE) {
+    console.log(`[SERVER] override nama role: ${ROLE_NAME}`);
+  }
   if (MODE === "emulate") {
     console.log(
       `[SERVER] MODE=emulate -> replay + override diamond=${DIAMOND} level=${LEVEL}`,
