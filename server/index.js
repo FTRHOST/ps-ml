@@ -665,10 +665,32 @@ function handleZoneOpcode(sock, opcode, seq, label, raw) {
     body = patchStructField(entry.body, SERVER_TIME_TAG, Date.now());
   }
   if (MODE === "emulate" && respOpcode === ROLE_INIT_SC) {
-    // Body role init pada capture baru tidak selalu bisa di-decode utuh oleh
-    // sdp.js (ada field yang membuat parser berhenti). Pakai patch biner
-    // terarah supaya diamond/level/iUid/sName tetap disesuaikan.
-    const accountId = CURRENT_ACCOUNT ? Number(CURRENT_ACCOUNT.iAccountId || 0) : 0;
+    // Cari akun dari request Role_Init (tag 8 = sAccountName) agar patch
+    // tidak bergantung pada global CURRENT_ACCOUNT (bisa null pada koneksi awal).
+    let account = CURRENT_ACCOUNT;
+    try {
+      let reqBody = null;
+      if (raw && raw.length > 4 && raw[0] === 0x10 && raw[1] === 0x00) {
+        const innerReq = probeUnpack(raw);
+        const parsedReq = probeParseInner(innerReq);
+        reqBody = parsedReq ? parsedReq.body : null;
+      } else if (raw && raw.length >= 9) {
+        reqBody = sdp.parseFrame(raw).body;
+      }
+      if (reqBody) {
+        const nodes = sdp.decode(reqBody);
+        const root = nodes[0];
+        const nameField = root && root.fields ? root.fields.find((f) => f.tag === 8) : null;
+        const accountName = nameField && nameField.raw ? nameField.raw.toString("utf8") : "";
+        if (accountName) {
+          const found = findAuthAccount({ sAccountName: accountName, sAuthKey: "" });
+          if (found) account = found;
+        }
+      }
+    } catch (_) {
+      // biarkan fallback ke CURRENT_ACCOUNT
+    }
+    const accountId = account ? Number(account.iAccountId || 0) : 0;
     const name = accountId > 0 ? `petwir${String(accountId).padStart(2, "0")}` : null;
     body = patchRoleInitBinary(body || entry.body, DIAMOND, LEVEL, accountId, name);
     console.log(
