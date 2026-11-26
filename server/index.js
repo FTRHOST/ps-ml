@@ -49,6 +49,9 @@ const {
 
 const MODE = (process.env.MODE || "replay").toLowerCase();
 
+/** Akun terakhir yang login (untuk patch Role_Init di zone). */
+let CURRENT_ACCOUNT = null;
+
 // Template auth standalone (disematkan, tidak bergantung pada captures/).
 // Sumber: capture resmi terbaru; field dinamis disesuaikan saat render.
 const AUTH_SC_TEMPLATE = Buffer.from(
@@ -388,7 +391,7 @@ function patchField(bodyBuf, fieldTag, value) {
  * Tidak bergantung pada decode penuh; field awal yang valid cukup untuk
  * menemukan titik sisip (setelah tag 10) dan menimpa tag 3.
  */
-function patchRoleInitBinary(bodyBuf, diamond, level) {
+function patchRoleInitBinary(bodyBuf, diamond, level, accountId, name) {
   const T = sdp.T;
   const fields = [];
   let pos = 1; // lewati header struct (0x70)
@@ -409,7 +412,11 @@ function patchRoleInitBinary(bodyBuf, diamond, level) {
   const segments = [];
   let hasDiamond = false;
   for (const f of fields) {
-    if (f.tag === 3) {
+    if (f.tag === 0 && accountId) {
+      segments.push(sdp.encodeNode({ tag: 0, type: T.INT, v: BigInt(accountId) }));
+    } else if (f.tag === 1 && name) {
+      segments.push(sdp.encodeNode({ tag: 1, type: T.STRING, raw: Buffer.from(name, "utf8") }));
+    } else if (f.tag === 3) {
       segments.push(sdp.encodeNode({ tag: 3, type: T.INT, v: BigInt(level) }));
     } else if (f.tag === 11) {
       hasDiamond = true;
@@ -503,6 +510,7 @@ function handleAuthOpcode(sock, opcode, seq, style, label, raw) {
         accountId = Number(account.iAccountId || 1);
         sessionKey = account.sSessionKey || null;
         stZone = account.stZone || null;
+        CURRENT_ACCOUNT = account;
       } catch (_) {
         accountId = 1;
       }
@@ -571,6 +579,7 @@ function handleAuthOpcode(sock, opcode, seq, style, label, raw) {
     }
     const cs = Cmd_Login_Auth_CS.fromSdpBody(csBody);
     const account = findAuthAccount(cs) || createAuthAccount(cs);
+    CURRENT_ACCOUNT = account;
     built = buildLoginAuthSC(seq, account);
   } else if (opcode === 0x70000301) {
     console.log(`[${label}] Cmd_Login_GetZone_CS -> Cmd_Login_GetZone_SC`);
@@ -658,10 +667,12 @@ function handleZoneOpcode(sock, opcode, seq, label, raw) {
   if (MODE === "emulate" && respOpcode === ROLE_INIT_SC) {
     // Body role init pada capture baru tidak selalu bisa di-decode utuh oleh
     // sdp.js (ada field yang membuat parser berhenti). Pakai patch biner
-    // terarah supaya diamond/level tetap disisipkan tanpa decode penuh.
-    body = patchRoleInitBinary(body || entry.body, DIAMOND, LEVEL);
+    // terarah supaya diamond/level/iUid/sName tetap disesuaikan.
+    const accountId = CURRENT_ACCOUNT ? Number(CURRENT_ACCOUNT.iAccountId || 0) : 0;
+    const name = accountId > 0 ? `petwir${String(accountId).padStart(2, "0")}` : null;
+    body = patchRoleInitBinary(body || entry.body, DIAMOND, LEVEL, accountId, name);
     console.log(
-      `[${label}] override iDiamond=${DIAMOND} iLevel=${LEVEL} pada Cmd_Role_Init_SC`,
+      `[${label}] override iUid=${accountId} sName=${name} iDiamond=${DIAMOND} iLevel=${LEVEL} pada Cmd_Role_Init_SC`,
     );
   }
   if (MODE === "emulate" && respOpcode === ROLE_INFO_SC) {
