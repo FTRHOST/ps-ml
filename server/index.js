@@ -101,6 +101,7 @@ const LEVEL_TAG = 3;
  * saat klien menyegarkan info role.
  */
 const ROLE_INFO_SC = 0x7000a04f;
+const ACCOUNT_GET_SC = 0x7000e04f;
 
 /** Cmd_Net_ServerTime_SC: tag 0 = epoch milidetik, tag 1 = offset zona waktu. */
 const SERVER_TIME_SC = 0x7000a04e;
@@ -734,7 +735,64 @@ function handleZoneOpcode(sock, opcode, seq, label, raw) {
     // Klien menyegarkan info role lewat opcode ini; tanpa patch, level kembali
     // ke nilai capture lama.
     body = patchField(body || entry.body, LEVEL_TAG, LEVEL);
-    console.log(`[${label}] override iLevel=${LEVEL} pada Cmd_Role_GetInfo_SC`);
+    // Patch iUid (tag 0) dan sName (tag 2) agar nama di lobby berubah.
+    try {
+      const acc = CURRENT_ACCOUNT;
+      const aid = acc ? Number(acc.iAccountId || 1) : 1;
+      const nm = `petwir${String(aid).padStart(2, "0")}`;
+      const nodes = sdp.decode(body || entry.body);
+      const out = nodes.map((n) => {
+        if (n.type !== sdp.T.STRUCT) return n;
+        const fields = n.fields.map((f) => {
+          if (f.tag === 0 && (f.type === sdp.T.INT || f.type === sdp.T.NEG)) {
+            return { ...f, type: sdp.T.INT, v: BigInt(aid) };
+          }
+          if (f.tag === 2 && f.type === sdp.T.STRING) {
+            return { ...f, raw: Buffer.from(nm, "utf8") };
+          }
+          return { ...f };
+        });
+        return { ...n, fields };
+      });
+      body = sdp.encode(out);
+    } catch (_) {}
+    console.log(`[${label}] override iUid/sName/iLevel pada Cmd_Role_GetInfo_SC`);
+  }
+  if (MODE === "emulate" && respOpcode === ACCOUNT_GET_SC) {
+    try {
+      const acc = CURRENT_ACCOUNT;
+      const aid = acc ? Number(acc.iAccountId || 1) : 1;
+      const nm = `petwir${String(aid).padStart(2, "0")}`;
+      const nodes = sdp.decode(body || entry.body);
+      const out = nodes.map((n) => {
+        if (n.type !== sdp.T.STRUCT) return n;
+        const fields = n.fields.map((f) => {
+          if (f.tag === 0 && (f.type === sdp.T.INT || f.type === sdp.T.NEG)) {
+            return { ...f, type: sdp.T.INT, v: BigInt(aid) };
+          }
+          if (f.tag === 2 && f.type === sdp.T.LIST) {
+            const items = f.items.map((it) => {
+              if (it.type !== sdp.T.STRUCT) return it;
+              const fs2 = it.fields.map((ff) => {
+                if (ff.tag === 1 && (ff.type === sdp.T.INT || ff.type === sdp.T.NEG)) {
+                  return { ...ff, type: sdp.T.INT, v: BigInt(aid) };
+                }
+                if (ff.tag === 2 && ff.type === sdp.T.STRING) {
+                  return { ...ff, raw: Buffer.from(nm, "utf8") };
+                }
+                return { ...ff };
+              });
+              return { ...it, fields: fs2 };
+            });
+            return { ...f, items };
+          }
+          return { ...f };
+        });
+        return { ...n, fields };
+      });
+      body = sdp.encode(out);
+    } catch (_) {}
+    console.log(`[${label}] override iUid/sName pada Cmd_Account_GetAccount_SC`);
   }
   sock.write(renderFrame(entry, seq, body));
 
