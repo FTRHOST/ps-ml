@@ -594,6 +594,15 @@ function createAuthAccount(cs) {
   return authAccountFromRow(row);
 }
 
+/** Ambil akun terakhir (terbesar i_account_id) untuk reuse di mode single-user. */
+function getLastAuthAccount() {
+  const row = AUTH_DB.prepare(
+    "SELECT * FROM auth_accounts ORDER BY i_account_id DESC LIMIT 1",
+  ).get();
+  if (!row) return null;
+  return authAccountFromRow(row);
+}
+
 /**
  * Build Cmd_Login_Auth_SC (opcode 0x70000201) untuk seq tertentu.
  * Akun dipakai bila tersedia (hasil lookup database/toko auth), supaya field
@@ -887,6 +896,7 @@ module.exports = {
   findAuthAccount,
   findAuthAccountById,
   createAuthAccount,
+  getLastAuthAccount,
   registerAuthAccount,
   buildLoginGetBulletinSC,
   buildLoginCheckUpgradeSC,

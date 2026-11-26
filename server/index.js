@@ -42,6 +42,7 @@ const {
   findAuthAccount,
   findAuthAccountById,
   createAuthAccount,
+  getLastAuthAccount,
   buildLoginGetBulletinSC,
   buildLoginCheckUpgradeSC,
   buildNetConnectSC,
@@ -512,8 +513,13 @@ function handleAuthOpcode(sock, opcode, seq, style, label, raw) {
         const cs = Cmd_Login_Auth_CS.fromSdpBody(csBody);
         let account = findAuthAccount(cs);
         if (!account) {
-          console.log(`[AUTH] akun baru: "${cs.sAccountName}" (tidak ditemukan di DB)`);
-          account = createAuthAccount(cs);
+          account = getLastAuthAccount();
+          if (account) {
+            console.log(`[AUTH] reuse akun terakhir id=${account.iAccountId} (akun baru tidak dibuat)`);
+          } else {
+            console.log(`[AUTH] akun baru: "${cs.sAccountName}" (tidak ditemukan di DB)`);
+            account = createAuthAccount(cs);
+          }
         } else {
           console.log(`[AUTH] akun ditemukan: id=${account.iAccountId} name="${cs.sAccountName}"`);
         }
@@ -588,7 +594,10 @@ function handleAuthOpcode(sock, opcode, seq, style, label, raw) {
       csBody = sdp.parseFrame(raw).body;
     }
     const cs = Cmd_Login_Auth_CS.fromSdpBody(csBody);
-    const account = findAuthAccount(cs) || createAuthAccount(cs);
+    let account = findAuthAccount(cs);
+    if (!account) {
+      account = getLastAuthAccount() || createAuthAccount(cs);
+    }
     CURRENT_ACCOUNT = account;
     built = buildLoginAuthSC(seq, account);
   } else if (opcode === 0x70000301) {
