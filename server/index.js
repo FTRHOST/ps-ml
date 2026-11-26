@@ -510,7 +510,13 @@ function handleAuthOpcode(sock, opcode, seq, style, label, raw) {
           csBody = sdp.parseFrame(raw).body;
         }
         const cs = Cmd_Login_Auth_CS.fromSdpBody(csBody);
-        const account = findAuthAccount(cs) || createAuthAccount(cs);
+        let account = findAuthAccount(cs);
+        if (!account) {
+          console.log(`[AUTH] akun baru: "${cs.sAccountName}" (tidak ditemukan di DB)`);
+          account = createAuthAccount(cs);
+        } else {
+          console.log(`[AUTH] akun ditemukan: id=${account.iAccountId} name="${cs.sAccountName}"`);
+        }
         accountId = Number(account.iAccountId || 1);
         sessionKey = account.sSessionKey || null;
         stZone = account.stZone || null;
