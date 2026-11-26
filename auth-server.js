@@ -385,7 +385,21 @@ class Cmd_Login_GetZone_SC {
         iFlag: zone.iFlag ?? 0,
       },
     ];
-    this.vRoleList = [];
+    // Tanpa entri ini klien menganggap akun belum punya role dan membuka UI
+    // Create Character meskipun Cmd_Role_Init_SC sudah dikirim dari replay.
+    this.vRoleList = [
+      {
+        iZoneID: zone.iZoneId ?? 1,
+        iCreateRoleTime: 1543443539,
+        iAreaTag: 14,
+        bChangeName: 0,
+        iCreateRoleAreaTag: 14,
+        iLevel: Number(process.env.LEVEL || 28),
+        iForceChangeAreaTagReason: 0,
+        sCreateRoleCountry: "ID",
+        vABTestExpParam: [],
+      },
+    ];
     this.iRegionId = account ? (account.iRegionId ?? 0) : 0;
   }
 
@@ -404,8 +418,26 @@ class Cmd_Login_GetZone_SC {
     sdpParts.push(packInt(3, BigInt(zone.iFlag ?? 0)));
     sdpParts.push(Buffer.from([0x80])); // StructEnd item
 
-    // Tag 1: vRoleList (List) -> kosong
-    sdpParts.push(Buffer.from([0x51, 0x00])); // Type 5 (List) tag 1, jumlah item 0
+    // Tag 1: vRoleList (List of SimpleRoleInfo)
+    sdpParts.push(Buffer.from([0x51, this.vRoleList.length & 0xff]));
+    for (const role of this.vRoleList) {
+      sdpParts.push(
+        Buffer.concat([
+          Buffer.from([0x70]), // StructBegin item (tag 0)
+          packInt(0, BigInt(role.iZoneID ?? 1)),
+          packInt(1, BigInt(role.iCreateRoleTime ?? 0)),
+          packInt(2, BigInt(role.iAreaTag ?? 0)),
+          packInt(3, BigInt(role.bChangeName ? 1 : 0)),
+          packInt(4, BigInt(role.iCreateRoleAreaTag ?? 0)),
+          packInt(5, BigInt(role.iLevel ?? 1)),
+          packInt(6, BigInt(role.iForceChangeAreaTagReason ?? 0)),
+          packString(7, role.sCreateRoleCountry || ""),
+          Buffer.from([0x50, (role.vABTestExpParam || []).length & 0xff]),
+          ...(role.vABTestExpParam || []).map((s) => packString(0, s)),
+          Buffer.from([0x80]), // StructEnd item
+        ]),
+      );
+    }
 
     // Tag 2: iRegionId
     sdpParts.push(packInt(2, BigInt(this.iRegionId || 0)));
@@ -591,15 +623,6 @@ function createAuthAccount(cs) {
   const row = AUTH_DB.prepare(
     "SELECT * FROM auth_accounts WHERE i_account_id = ?",
   ).get(info.lastInsertRowid);
-  return authAccountFromRow(row);
-}
-
-/** Ambil akun terakhir (terbesar i_account_id) untuk reuse di mode single-user. */
-function getLastAuthAccount() {
-  const row = AUTH_DB.prepare(
-    "SELECT * FROM auth_accounts ORDER BY i_account_id DESC LIMIT 1",
-  ).get();
-  if (!row) return null;
   return authAccountFromRow(row);
 }
 
@@ -896,7 +919,6 @@ module.exports = {
   findAuthAccount,
   findAuthAccountById,
   createAuthAccount,
-  getLastAuthAccount,
   registerAuthAccount,
   buildLoginGetBulletinSC,
   buildLoginCheckUpgradeSC,

@@ -95,6 +95,8 @@ const LEVEL = Number(
  * layar menampilkan identitas lokal. Bisa diganti lewat env ROLE_NAME.
  */
 const ROLE_NAME = process.env.ROLE_NAME || "petwir0x";
+/** Uid role yang dipakai capture; uid kecil (1) dianggap role baru oleh klien. */
+const ROLE_UID = Number(process.env.ROLE_UID || 332108113);
 /**
  * Override identitas hanya untuk paket yang dilayani lokal (replay). Mode relay
  * murni tidak mengubah byte; hybrid hanya meneruskan opcode yang TIDAK ada di
@@ -603,6 +605,10 @@ function handleAuthOpcode(sock, opcode, seq, style, label, raw) {
         body = sdp.encode(out);
       }
       body = patchStructField(body, 10, Date.now());
+      // Capture auth tidak menyertakan bNewAccount, sehingga klien menganggap
+      // akun baru dan membuka UI Create Character. Tandai sebagai akun lama
+      // agar langsung masuk lobby dengan role dari replay.
+      body = patchStructField(body, 12, 0);
     } else if (respOpcode === 0x70000601) {
       try {
         const nodes = sdp.decode(entry.body);
@@ -778,9 +784,9 @@ function handleZoneOpcode(sock, opcode, seq, label, raw) {
     let accountId = account ? Number(account.iAccountId || 0) : 0;
     if (!accountId) accountId = 1;
     const name = ROLE_NAME;
-    body = patchRoleInitBinary(body || entry.body, DIAMOND, LEVEL, accountId, name);
+    body = patchRoleInitBinary(body || entry.body, DIAMOND, LEVEL, ROLE_UID, name);
     console.log(
-      `[${label}] override iUid=${accountId} sName=${name} iDiamond=${DIAMOND} iLevel=${LEVEL} pada Cmd_Role_Init_SC`,
+      `[${label}] override iUid=${ROLE_UID} sName=${name} iDiamond=${DIAMOND} iLevel=${LEVEL} pada Cmd_Role_Init_SC`,
     );
   }
   if (NAME_OVERRIDE && respOpcode === ROLE_INFO_SC) {
@@ -790,7 +796,7 @@ function handleZoneOpcode(sock, opcode, seq, label, raw) {
     // Patch iUid (tag 0) dan sName (tag 2) agar nama di lobby berubah.
     try {
       const acc = CURRENT_ACCOUNT;
-      const aid = acc ? Number(acc.iAccountId || 1) : 1;
+      const aid = ROLE_UID;
       const nm = ROLE_NAME;
       const nodes = sdp.decode(body || entry.body);
       const out = nodes.map((n) => {
@@ -813,7 +819,7 @@ function handleZoneOpcode(sock, opcode, seq, label, raw) {
   if (NAME_OVERRIDE && respOpcode === ACCOUNT_GET_SC) {
     try {
       const acc = CURRENT_ACCOUNT;
-      const aid = acc ? Number(acc.iAccountId || 1) : 1;
+      const aid = ROLE_UID;
       const nm = ROLE_NAME;
       const nodes = sdp.decode(body || entry.body);
       const out = nodes.map((n) => {
