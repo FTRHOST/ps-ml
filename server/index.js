@@ -484,9 +484,25 @@ function handleAuthOpcode(sock, opcode, seq, style, label, raw) {
     );
     let body = null;
     if (respOpcode === 0x70000201) {
-      // iAccountId (tag 0) wajib non-zero; capture asli menghilangkannya
-      // (nilai 0) sehingga game mendeteksi account Uid = 0.
-      body = patchStructField(entry.body, 0, 1);
+      // iAccountId (tag 0) diisi dari logika DB (find/create account),
+      // bukan hardcode, supaya sesuai akun yang login.
+      let accountId = 1;
+      try {
+        let csBody = null;
+        if (style === "probe") {
+          const innerReq = probeUnpack(raw);
+          const parsedReq = probeParseInner(innerReq);
+          csBody = parsedReq ? parsedReq.body : null;
+        } else {
+          csBody = sdp.parseFrame(raw).body;
+        }
+        const cs = Cmd_Login_Auth_CS.fromSdpBody(csBody);
+        const account = findAuthAccount(cs) || createAuthAccount(cs);
+        accountId = Number(account.iAccountId || 1);
+      } catch (_) {
+        accountId = 1;
+      }
+      body = patchStructField(entry.body, 0, accountId);
       body = patchStructField(body, 10, Date.now());
     } else if (respOpcode === 0x70000601) {
       try {
