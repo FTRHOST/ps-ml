@@ -437,6 +437,15 @@ const PING_LOCAL_MS = Math.max(
   1,
   Number(process.env.PING_LOCAL_MS || 1) || 1,
 );
+/**
+ * Penundaan echo UDP (ms). Game mengukur RTT dari datagram yang dikirim dan
+ * diterima kembali, jadi delay ini menghasilkan angka ping "asli", bukan
+ * sekadar menulis angka statis ke packet. Default 0 = echo langsung.
+ */
+const PING_ECHO_DELAY_MS = Math.max(
+  0,
+  Number(process.env.PING_ECHO_DELAY_MS || 0) || 0,
+);
 
 function parseAddr(value, fallback) {
   const s = String(value || fallback);
@@ -2412,15 +2421,19 @@ function echoPingDatagram(msg, rinfo, sock, port) {
     PING_UDP_LOG_COUNT % 200 === 0
   ) {
     console.log(
-      `[PING:UDP:${port}] ${rinfo.address}:${rinfo.port} ${msg.length}B echo hex=${head}`,
+      `[PING:UDP:${port}] ${rinfo.address}:${rinfo.port} ${msg.length}B echo hex=${head} delay=${PING_ECHO_DELAY_MS}ms`,
     );
   }
   PING_UDP_LOG_COUNT += 1;
-  try {
-    sock.send(msg, rinfo.port, rinfo.address);
-  } catch (e) {
-    console.log(`[PING:UDP:${port}] gagal echo: ${e.message}`);
-  }
+  const reply = () => {
+    try {
+      sock.send(msg, rinfo.port, rinfo.address);
+    } catch (e) {
+      console.log(`[PING:UDP:${port}] gagal echo: ${e.message}`);
+    }
+  };
+  if (PING_ECHO_DELAY_MS > 0) setTimeout(reply, PING_ECHO_DELAY_MS);
+  else reply();
 }
 
 function listenUdpPing(port) {
@@ -2503,7 +2516,7 @@ async function main() {
   console.log(`   Server IP : ${SERVER_IP}`);
   console.log(`   Zone adv  : ${ZONE_ADVERTISE_IP}:${ZONE_PORTS[0]}`);
   console.log(
-    `   Ping UDP  : ${PING_UDP_PORTS.join(", ")} (echo lokal, IP=${PING_LOCAL_IP})`,
+    `   Ping UDP  : ${PING_UDP_PORTS.join(", ")} (echo lokal, IP=${PING_LOCAL_IP}, delay=${PING_ECHO_DELAY_MS}ms)`,
   );
   console.log(
     `   ColdStart : ${COLDSTART_GREET ? "Greeting -45 saat connect Auth + probe 0x1000" : "Handled (-45 via probe 0x1000 saja)"}`,

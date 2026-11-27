@@ -12,15 +12,15 @@
 #   on   : app -> iptables REDIRECT 127.0.0.1 -> adb reverse -> PC (butuh USB/adb)
 #   wifi : app -> iptables DNAT <IP-PC> -> PC lewat LAN (tanpa adb reverse)
 #
-# Port UDP ping juga ikut dialihkan di mode wifi. Mode USB/adb tidak
-# meneruskan UDP, jadi untuk ping lokal pakai mode wifi.
+# Port UDP ping ikut dialihkan di mode wifi dan mode on. Karena adb reverse
+# hanya meneruskan TCP, UDP tetap memakai DNAT LAN ke IP PC.
 #
 # Pada mode wifi, bila device sedang menjadi hotspot, aturan PREROUTING juga
 # dipasang supaya perangkat lain yang tersambung ke hotspot tersebut otomatis
 # memakai server lokal (tanpa root di perangkat klien).
 #
 # Pemakaian:
-#   ./tools/redirect.sh on                   # USB/adb (perilaku lama)
+#   ./tools/redirect.sh on [IP-PC]           # USB/adb + DNAT UDP ping
 #   ./tools/redirect.sh wifi                 # LAN, IP PC dideteksi otomatis
 #   ./tools/redirect.sh wifi 192.168.1.50    # LAN, IP PC eksplisit
 #   ./tools/redirect.sh off                  # matikan semua pengalihan
@@ -82,31 +82,18 @@ detect_route_if() {
     | awk '{for (i = 1; i <= NF; i++) if ($i == "dev") { print $(i + 1); exit }}'
 }
 
-# Pasang aturan tambahan (dipanggil setelah flush_rules).
-apply_wifi_rules() {
+# DNAT UDP ping ke IP PC. Dipakai oleh mode wifi DAN on: adb reverse hanya
+# meneruskan TCP, jadi UDP tidak bisa ikut jalur 127.0.0.1.
+apply_udp_dnat_rules() {
   local host_ip="$1" ap_if="$2" route_if="$3" cmd="" p
-  for p in "${PORTS[@]}"; do
-    cmd+="iptables -t nat -A OUTPUT -p tcp --dport ${p} -j DNAT --to-destination ${host_ip}:${p} -m comment --comment ${COMMENT}; "
-  done
   for p in "${UDP_PORTS[@]}"; do
     cmd+="iptables -t nat -A OUTPUT -p udp --dport ${p} -j DNAT --to-destination ${host_ip}:${p} -m comment --comment ${COMMENT}; "
   done
   if [ -n "${ap_if}" ]; then
-    for p in "${PORTS[@]}"; do
-      # Kecualikan trafik dari PC sendiri: kalau PC menjalankan relay ke server
-      # resmi, paketnya tidak boleh dipantulkan balik oleh DNAT hotspot.
-      cmd+="iptables -t nat -A PREROUTING ! -s ${host_ip} -i ${ap_if} -p tcp --dport ${p} -j DNAT --to-destination ${host_ip}:${p} -m comment --comment ${COMMENT}; "
-    done
     for p in "${UDP_PORTS[@]}"; do
       cmd+="iptables -t nat -A PREROUTING ! -s ${host_ip} -i ${ap_if} -p udp --dport ${p} -j DNAT --to-destination ${host_ip}:${p} -m comment --comment ${COMMENT}; "
     done
-    # MASQUERADE supaya balasan PC kembali lewat device (conntrack), bukan
-    # langsung ke klien. Interface keluar bisa ap0 (PC di hotspot yang sama)
-    # atau wlan0 (PC di WiFi upstream).
     local masq_if="${route_if:-$ap_if}"
-    for p in "${PORTS[@]}"; do
-      cmd+="iptables -t nat -A POSTROUTING -o ${masq_if} -p tcp -d ${host_ip} --dport ${p} -j MASQUERADE -m comment --comment ${COMMENT}; "
-    done
     for p in "${UDP_PORTS[@]}"; do
       cmd+="iptables -t nat -A POSTROUTING -o ${masq_if} -p udp -d ${host_ip} --dport ${p} -j MASQUERADE -m comment --comment ${COMMENT}; "
     done
@@ -120,6 +107,31 @@ apply_wifi_rules() {
   $ROOTCMD "$cmd" >/dev/null
 }
 
+# Pasang aturan tambahan (dipanggil setelah flush_rules).
+apply_wifi_rules() {
+  local host_ip="$1" ap_if="$2" route_if="$3" cmd="" p
+  for p in "${PORTS[@]}"; do
+    cmd+="iptables -t nat -A OUTPUT -p tcp --dport ${p} -j DNAT --to-destination ${host_ip}:${p} -m comment --comment ${COMMENT}; "
+  done
+  if [ -n "${ap_if}" ]; then
+    for p in "${PORTS[@]}"; do
+      # Kecualikan trafik dari PC sendiri: kalau PC menjalankan relay ke server
+      # resmi, paketnya tidak boleh dipantulkan balik oleh DNAT hotspot.
+      cmd+="iptables -t nat -A PREROUTING ! -s ${host_ip} -i ${ap_if} -p tcp --dport ${p} -j DNAT --to-destination ${host_ip}:${p} -m comment --comment ${COMMENT}; "
+    done
+    # MASQUERADE supaya balasan PC kembali lewat device (conntrack), bukan
+    # langsung ke klien. Interface keluar bisa ap0 (PC di hotspot yang sama)
+    # atau wlan0 (PC di WiFi upstream).
+    local masq_if="${route_if:-$ap_if}"
+    for p in "${PORTS[@]}"; do
+      cmd+="iptables -t nat -A POSTROUTING -o ${masq_if} -p tcp -d ${host_ip} --dport ${p} -j MASQUERADE -m comment --comment ${COMMENT}; "
+    done
+  fi
+  cmd="${cmd%; }"
+  $ROOTCMD "$cmd" >/dev/null
+  apply_udp_dnat_rules "${host_ip}" "${ap_if}" "${route_if}"
+}
+
 apply_usb_rules() {
   local cmd="" p
   for p in "${PORTS[@]}"; do
@@ -131,6 +143,7 @@ apply_usb_rules() {
 
 case "${1:-}" in
   on)
+    HOST_IP_ARG="${2:-}"
     flush_rules
     for p in "${PORTS[@]}"; do
       echo "[*] adb reverse tcp:${p} -> PC tcp:${p}"
@@ -138,9 +151,24 @@ case "${1:-}" in
     done
     apply_usb_rules
     for p in "${PORTS[@]}"; do
-      echo "[+] port ${p} -> relay (adb reverse)"
+      echo "[+] TCP ${p} -> relay (adb reverse)"
     done
-    echo "[i] UDP ping tidak lewat adb reverse; pakai 'wifi' untuk echo ping lokal"
+
+    HOST_IP="${HOST_IP_ARG:-$(detect_host_ip)}"
+    if [ -n "${HOST_IP}" ]; then
+      AP_IF="$(detect_ap_if)"
+      ROUTE_IF="$(detect_route_if "${HOST_IP}")"
+      # REDIRECT TCP sudah dipasang lebih dulu, jadi klien lokal tetap lewat
+      # adb reverse. DNAT TCP/UDP berikutnya melayani klien hotspot dan UDP.
+      apply_wifi_rules "${HOST_IP}" "${AP_IF}" "${ROUTE_IF}"
+      for p in "${UDP_PORTS[@]}"; do
+        echo "[+] UDP ${p} -> ${HOST_IP}:${p} (DNAT, bukan adb reverse)"
+      done
+      echo "[i] klien hotspot juga ikut dialihkan lewat: ${ROUTE_IF:-${AP_IF}}"
+    else
+      echo "[!] IP PC tidak terdeteksi; UDP ping belum dialihkan" >&2
+      echo "    jalankan ulang dengan: $0 on <IP-PC>" >&2
+    fi
     ;;
   wifi)
     HOST_IP="${2:-}"
@@ -192,7 +220,7 @@ case "${1:-}" in
     echo "== IP PC (terdeteksi) =="; detect_host_ip || true
     ;;
   *)
-    echo "pemakaian: $0 on|wifi [IP-PC]|off|status" >&2
+    echo "pemakaian: $0 on [IP-PC]|wifi [IP-PC]|off|status" >&2
     exit 2
     ;;
 esac
