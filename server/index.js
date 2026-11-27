@@ -249,12 +249,14 @@ function accountIdFromDisplay(displayId) {
 }
 
 /**
- * Tentukan akun untuk request zone: coba baca sAccountName dari request, lalu
- * jatuh ke akun terakhir yang login. Dipakai patcher yang butuh account id.
+ * Tentukan akun untuk request zone. Hanya sAccountName di request atau
+ * Role_Init yang dianggap binding authoritative. Sebelum itu, fallback ke akun
+ * terakhir yang login dipakai untuk patch non-kritis, TAPI tidak disimpan ke
+ * socket: kalau tidak, request awal bisa mengunci socket ke akun lama.
  */
 function resolveRequestAccountId(raw, sock) {
-  if (sock && sock.mlAccountId) return sock.mlAccountId;
-  let account = CURRENT_ACCOUNT;
+  if (sock && sock.mlAccountBound && sock.mlAccountId) return sock.mlAccountId;
+  let account = null;
   try {
     let reqBody = null;
     if (raw && raw.length > 4 && raw[0] === 0x10 && raw[1] === 0x00) {
@@ -271,17 +273,22 @@ function resolveRequestAccountId(raw, sock) {
         nameField && nameField.raw ? nameField.raw.toString("utf8") : "";
       if (accountName) {
         const found = findAuthAccount({ sAccountName: accountName, sAuthKey: "" });
-        if (found) account = found;
+        if (found) {
+          account = found;
+          if (sock) {
+            sock.mlAccountId = Number(found.iAccountId);
+            sock.mlAccountBound = true;
+          }
+        }
       }
     }
   } catch (_) {
     // biarkan fallback ke akun terakhir yang login
   }
-  const id = account
-    ? Number(account.iAccountId || 1)
+  if (account) return Number(account.iAccountId || 1);
+  return CURRENT_ACCOUNT
+    ? Number(CURRENT_ACCOUNT.iAccountId || 1)
     : Number(getLastAccountId() || 1);
-  if (sock) sock.mlAccountId = id;
-  return id;
 }
 
 /**
@@ -308,6 +315,14 @@ const ROLE_INFO_SC = 0x7000a04f;
 const ACCOUNT_GET_SC = 0x7000e04f;
 /** Daftar teman; capture lama bisa memuat identitas lokal sebagai "teman". */
 const FRIEND_LIST_SC = 0x70009057;
+/**
+ * Info squad tim (request 0x7000c3b8). Capture memuat squad "POTM" dengan
+ * sepuluh anggota, termasuk identitas pemain lama yang bisa tampil sebagai
+ * "member" di sidebar teman.
+ */
+const SQUAD_INFO_SC = 0x7000c4b8;
+/** Balasan 0x7000fbb8: daftar anggota squad (FriendBaseInfo + label POTM). */
+const SQUAD_MEMBER_LIST_SC = 0x7000fcb8;
 /** Balasan 0x7000a457: daftar rekomendasi teman di panel Add Friends. */
 const RECOMMEND_FRIEND_SC = 0x7000a557;
 /** Jumlah maksimal rekomendasi yang dikirim (mengikuti jumlah capture asli). */
@@ -747,13 +762,23 @@ function patchLegacyRoleName(bodyBuf, name) {
 }
 
 /**
+ * Daftar akun DB yang boleh ditampilkan ke viewer. Viewer yang belum terikat
+ * (mis. socket zone baru sebelum Role_Init) tidak mendapat entri lokal apa pun,
+ * supaya identitas stale tidak pernah muncul sebagai "diri sendiri"/teman.
+ */
+function listVisibleAccountIds(viewerAccountId) {
+  const viewer = Number(viewerAccountId || 0);
+  if (!viewer) return [];
+  return listAuthAccountIds().filter((id) => id !== viewer);
+}
+
+/**
  * Bangun ulang Cmd_Friend_GetFriendList_SC (0x70009057) dari DB. `vecFriends`
  * (tag 0) berisi semua akun DB kecuali viewer; field tampilan lain tetap
  * memakai template FriendBaseInfo dari capture.
  */
 function patchFriendListBody(bodyBuf, accountId, name) {
-  const selfId = Number(accountId || 0);
-  const candidates = listAuthAccountIds().filter((id) => id !== selfId);
+  const candidates = listVisibleAccountIds(accountId);
   const nodes = sdp.decode(bodyBuf || Buffer.alloc(0));
   const out = nodes.map((n) => {
     if (n.type !== sdp.T.STRUCT) return n;
@@ -1066,8 +1091,7 @@ function buildProfileVisitorItem(otherAccountId, template) {
  * sedang dilihat disingkirkan dari daftar pengunjung.
  */
 function patchRoleInfoVisitors(bodyBuf, targetAccountId) {
-  const exclude = Number(targetAccountId || 0);
-  const candidates = listAuthAccountIds().filter((id) => id !== exclude);
+  const candidates = listVisibleAccountIds(targetAccountId);
   const nodes = sdp.decode(bodyBuf || Buffer.alloc(0));
   const out = nodes.map((n) => {
     if (n.type !== sdp.T.STRUCT) return n;
@@ -1085,6 +1109,68 @@ function patchRoleInfoVisitors(bodyBuf, targetAccountId) {
   });
   return {
     body: sdp.encode(out),
+    count: candidates.length,
+    accountIds: candidates,
+  };
+}
+
+/**
+ * Bangun satu entri anggota squad pada tag 20 Cmd_Team_GetInfo_SC. Field statis
+ * capture dipertahankan, tetapi uid/zone/level mengikuti akun DB.
+ */
+function buildSquadMemberItem(otherAccountId, template) {
+  const identity = roleIdentity(otherAccountId);
+  const fields =
+    template && template.type === sdp.T.STRUCT
+      ? template.fields.map((f) => ({ ...f }))
+      : [];
+  setSdpInt(fields, 0, profileDisplayId(otherAccountId)); // ulUid
+  setSdpInt(fields, 1, ROLE_SVR_ID); // uiSvrId
+  setSdpInt(fields, 7, identity.level); // iLevel
+  return { tag: 0, type: sdp.T.STRUCT, fields };
+}
+
+/** Rekursif: ganti semua list member squad (tag 20) dengan akun DB. */
+function patchSquadInfoNode(node, candidates) {
+  if (!node || typeof node !== "object") return node;
+  if (node.type === sdp.T.LIST) {
+    return {
+      ...node,
+      items: node.items.map((it) => patchSquadInfoNode(it, candidates)),
+    };
+  }
+  if (!node.fields) return node;
+
+  let fields = node.fields.map((f) => patchSquadInfoNode(f, candidates));
+  const idx = fields.findIndex(
+    (f) => f.tag === 20 && f.type === sdp.T.LIST && Array.isArray(f.items),
+  );
+  if (idx >= 0) {
+    const list = fields[idx];
+    const template = list.items.find((it) => it.type === sdp.T.STRUCT) || null;
+    fields[idx] = {
+      ...list,
+      items: candidates.map((id) => buildSquadMemberItem(id, template)),
+    };
+    const leader = candidates[0] || 0;
+    setSdpInt(fields, 7, leader ? profileDisplayId(leader) : 0);
+    setSdpInt(fields, 8, leader ? ROLE_SVR_ID : 0);
+    setSdpInt(fields, 41, leader ? profileDisplayId(leader) : 0);
+    setSdpInt(fields, 42, leader ? ROLE_SVR_ID : 0);
+  }
+  return { ...node, fields };
+}
+
+/**
+ * Patch response info squad (0x7000c4b8) supaya daftar "member" tidak memuat
+ * viewer atau pemain dari capture. Akun yang belum terikat tidak melihat entry
+ * lokal sama sekali.
+ */
+function patchSquadInfoBody(bodyBuf, viewerAccountId) {
+  const candidates = listVisibleAccountIds(viewerAccountId);
+  const nodes = sdp.decode(bodyBuf || Buffer.alloc(0));
+  return {
+    body: sdp.encode(nodes.map((n) => patchSquadInfoNode(n, candidates))),
     count: candidates.length,
     accountIds: candidates,
   };
@@ -1125,10 +1211,10 @@ function buildRecommendFriendItem(otherAccountId, template) {
  * sedang login disingkirkan dari daftar rekomendasi.
  */
 function patchRecommendFriendBody(bodyBuf, accountId) {
-  const selfId = Number(accountId || 0);
-  const candidates = listAuthAccountIds()
-    .filter((id) => id !== selfId)
-    .slice(0, RECOMMEND_FRIEND_LIMIT);
+  const candidates = listVisibleAccountIds(accountId).slice(
+    0,
+    RECOMMEND_FRIEND_LIMIT,
+  );
   const nodes = sdp.decode(bodyBuf || Buffer.alloc(0));
   const out = nodes.map((n) => {
     if (n.type !== sdp.T.STRUCT) return n;
@@ -1746,6 +1832,7 @@ function handleZoneOpcode(sock, opcode, seq, label, raw) {
     let accountId = account ? Number(account.iAccountId || 0) : 0;
     if (!accountId) accountId = resolveRequestAccountId(raw, sock);
     sock.mlAccountId = accountId; // binding akun untuk seluruh request di socket ini
+    sock.mlAccountBound = true; // Role_Init membawa sAccountName -> authoritative
     zoneAccountId = accountId;
     setLastAccountId(accountId);
     // Identitas role sepenuhnya diatur tabel role_init_fields (i_account_id =
@@ -1886,7 +1973,26 @@ function handleZoneOpcode(sock, opcode, seq, label, raw) {
   }
   const accountRoleName = roleIdentity(zoneAccountId).name;
   if (NAME_OVERRIDE) body = patchLegacyRoleName(body || entry.body, accountRoleName);
-  if (NAME_OVERRIDE && respOpcode === FRIEND_LIST_SC) {
+  if (NAME_OVERRIDE && respOpcode === SQUAD_INFO_SC) {
+    try {
+      const patched = patchSquadInfoBody(body || entry.body, zoneAccountId);
+      body = patched.body;
+      console.log(
+        `[${label}] patch Cmd_Team_GetInfo_SC dari DB account=${zoneAccountId} member=${patched.count} ids=[${patched.accountIds.join(",")}]`,
+      );
+    } catch (e) {
+      console.log(`[${label}] PATCH GAGAL Cmd_Team_GetInfo_SC: ${e.message}`);
+      body = entry.body;
+    }
+  }
+  if (
+    NAME_OVERRIDE &&
+    (respOpcode === FRIEND_LIST_SC || respOpcode === SQUAD_MEMBER_LIST_SC)
+  ) {
+    const labelOpcode =
+      respOpcode === SQUAD_MEMBER_LIST_SC
+        ? "Cmd_Team_GetMemberList_SC"
+        : "Cmd_Friend_GetFriendList_SC";
     try {
       const patched = patchFriendListBody(
         body || entry.body,
@@ -1895,10 +2001,10 @@ function handleZoneOpcode(sock, opcode, seq, label, raw) {
       );
       body = patched.body;
       console.log(
-        `[${label}] patch Cmd_Friend_GetFriendList_SC dari DB account=${zoneAccountId} jumlah=${patched.count} ids=[${patched.accountIds.join(",")}]`,
+        `[${label}] patch ${labelOpcode} dari DB account=${zoneAccountId} jumlah=${patched.count} ids=[${patched.accountIds.join(",")}]`,
       );
     } catch (e) {
-      console.log(`[${label}] PATCH GAGAL Cmd_Friend_GetFriendList_SC: ${e.message}`);
+      console.log(`[${label}] PATCH GAGAL ${labelOpcode}: ${e.message}`);
       body = entry.body;
     }
   }
@@ -2227,6 +2333,7 @@ module.exports = {
   patchAuthSimpleRoleInfo,
   patchRoleInfoBody,
   patchRoleInfoVisitors,
+  patchSquadInfoBody,
   patchRecommendFriendBody,
   patchFriendListBody,
   patchCmdHeroGetListBody,
