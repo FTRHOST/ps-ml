@@ -3,6 +3,10 @@
 Catatan untuk melanjutkan pekerjaan setelah handoff `PROGRESS.md`. Fokus dokumen:
 di mana posisi, apa yang sudah terbukti hari ini, dan langkah berikutnya.
 
+> **Update 2026-11-27:** untuk identitas per-akun, DB `state/game.db`, cold-start
+> `-45`, jaringan hotspot/zone, dan patch field profil, baca
+> `docs/HANDOFF-2026-11-27.md`. Dokumen ini adalah arsip fase sebelumnya.
+
 ---
 
 ## 1. Status saat ini

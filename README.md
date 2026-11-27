@@ -252,6 +252,9 @@ Log runtime yang dipakai saat pengembangan: `/tmp/opencode/server.log`,
 
 ## 9. Status
 
-Lihat `PROGRESS.md` dan `docs/LANJUTKAN.md`. Ringkas: Fase 1–5 berjalan; login →
-lobby dari server lokal, diamond **2626**, level **28**, stabil (heartbeat
-`0x7000954e` dibalas dari cache).
+Untuk handoff terbaru (2026-11-27 — identitas per-akun, DB, cold-start `-45`,
+hotspot/zone, dan field profil), baca **`docs/HANDOFF-2026-11-27.md`** dulu.
+Catatan lama ada di `PROGRESS.md` dan `docs/LANJUTKAN.md`. Ringkas: Fase 1–5
+berjalan; login → lobby dari server lokal stabil (heartbeat `0x7000954e`
+dibalas dari cache). Nilai diamond/level sekarang berasal dari DB per akun
+(default lama **2626**/**28** ada di `state/role.json` sebagai fallback).

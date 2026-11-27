@@ -3,6 +3,10 @@
 > **Untuk AI agent berikutnya:** baca `CLAUDE.md` + `PRD.md` dulu, lalu berkas ini.
 > Berkas ini adalah catatan keadaan nyata di lapangan (per 2026-11-08 16:50 WIB),
 > termasuk hal yang **belum** berhasil. Jangan mengulang eksperimen yang sudah dicoba.
+>
+> **Update 2026-11-27:** baca `docs/HANDOFF-2026-11-27.md` untuk keadaan terkini.
+> Aturan butir 3 di bawah sudah berubah: `captures/` sekarang **wajib di-commit**
+> agar replay bisa dipakai bersama. `state/` tetap gitignored.
 
 ---
 
