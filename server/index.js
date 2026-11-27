@@ -192,7 +192,11 @@ function accountIdFromDisplay(displayId) {
   if (!Number.isFinite(n) || n <= 0) return null;
   if (PROFILE_ID_ENV === "auth" || PROFILE_ID_ENV === "") {
     const id = n - PROFILE_ID_OFFSET;
-    return Number.isInteger(id) && id > 0 ? id : null;
+    if (Number.isInteger(id) && id > 0) return id;
+    // Kompatibilitas: klien yang masih menyimpan ID lama 1000000 (dari sesi
+    // PROFILE_ID=1000000) harus tetap dikenali sebagai akun DB pertama.
+    if (n === PROFILE_ID_OFFSET) return 1;
+    return null;
   }
   const custom = Number(PROFILE_ID_ENV);
   return Number.isFinite(custom) && custom > 0 && n === custom ? 1 : null;
@@ -826,11 +830,18 @@ function sendZoneReply(sock, respOpcode, seq, raw, body) {
   );
 }
 
-/** Profil role lokal untuk builder room/battle data. */
-function currentRoleProfile() {
-  const accountUid = CURRENT_ACCOUNT
-    ? profileDisplayId(Number(CURRENT_ACCOUNT.iAccountId || 1))
-    : ROLE_UID;
+/**
+ * Profil role lokal untuk builder room/battle data. accountId opsional
+ * diteruskan dari socket yang sedang dilayani agar tidak memakai global
+ * CURRENT_ACCOUNT yang bisa tertimpa akun lain.
+ */
+function currentRoleProfile(accountId) {
+  const accountUid =
+    accountId !== undefined && accountId !== null
+      ? profileDisplayId(accountId)
+      : CURRENT_ACCOUNT
+        ? profileDisplayId(Number(CURRENT_ACCOUNT.iAccountId || 1))
+        : ROLE_UID;
   return {
     uid: BigInt(accountUid),
     svrId: ROLE_SVR_ID,
@@ -1228,6 +1239,10 @@ function handleAuthOpcode(sock, opcode, seq, style, label, raw) {
 }
 
 function handleZoneOpcode(sock, opcode, seq, label, raw) {
+  // Identitas harus per-socket. Global CURRENT_ACCOUNT bisa tertimpa akun lain
+  // ketika dua klien login bersamaan, menyebabkan Auth/Role_Init satu akun
+  // tetapi GetAccount/FriendList memakai akun lain.
+  const zoneAccountId = resolveRequestAccountId(raw, sock);
   if (opcode === 0x7000914e) {
     // Balasan resmi berisi sSessionKey base64 68 karakter. Utamakan frame asli
     // dari capture supaya kunci sesi yang dipakai klien benar-benar valid.
@@ -1366,7 +1381,7 @@ function handleZoneOpcode(sock, opcode, seq, label, raw) {
     // Start Game mengirim Cmd_Room_Enter_CS; klien hanya punya consumer untuk
     // Cmd_Room_Enter_SC. Mode create_then_enter meniru urutan server resmi.
     const cs = parseRoomEnterCS(extractCsBody(raw));
-    const profile = currentRoleProfile();
+    const profile = currentRoleProfile(zoneAccountId);
     const pvpType =
       process.env.ROOM_PVP_TYPE !== undefined
         ? Number(process.env.ROOM_PVP_TYPE)
@@ -1418,7 +1433,9 @@ function handleZoneOpcode(sock, opcode, seq, label, raw) {
 
   if (EMULATE && opcode === 0x7000c857) {
     if ((process.env.ROOM_GETINFO_MODE || "empty") === "builder") {
-      const body = buildRoomGetInfoSCBody({ profile: currentRoleProfile() });
+      const body = buildRoomGetInfoSCBody({
+        profile: currentRoleProfile(zoneAccountId),
+      });
       console.log(`[${label}] Cmd_Room_GetInfo_CS -> builder RoomInfo`);
       sendZoneReply(sock, 0x7000c957, seq, raw, body);
     } else {
@@ -1430,18 +1447,23 @@ function handleZoneOpcode(sock, opcode, seq, label, raw) {
 
   if (EMULATE && opcode === 0x7000d694) {
     // Cmd_Battle_GetBattleData_CS: Preparation menunggu balasan ini.
-    const body = buildCmdBattleGetBattleDataSCBody(currentRoleProfile());
+    const body = buildCmdBattleGetBattleDataSCBody(
+      currentRoleProfile(zoneAccountId),
+    );
     const entry = REPLAY_CACHE.get(hex32(0x7000d794));
     let scBody = body;
     if (entry) {
       try {
-        scBody = patchCmdBattleGetBattleDataBody(entry.body, currentRoleProfile());
+        scBody = patchCmdBattleGetBattleDataBody(
+          entry.body,
+          currentRoleProfile(zoneAccountId),
+        );
       } catch (_) {
         scBody = body;
       }
     }
     console.log(
-      `[${label}] Cmd_Battle_GetBattleData_CS -> Cmd_Battle_GetBattleData_SC (uid=${currentRoleProfile().uid} svr=${ROLE_SVR_ID})`,
+      `[${label}] Cmd_Battle_GetBattleData_CS -> Cmd_Battle_GetBattleData_SC (uid=${currentRoleProfile(zoneAccountId).uid} svr=${ROLE_SVR_ID})`,
     );
     sendZoneReply(sock, 0x7000d794, seq, raw, scBody);
     return;
@@ -1531,8 +1553,7 @@ function handleZoneOpcode(sock, opcode, seq, label, raw) {
     // 332108113/Fathir_Qepo; semua harus mengikuti PROFILE_ID agar profiling
     // tidak dianggap sebagai pemain lain.
     try {
-      const acc = CURRENT_ACCOUNT;
-      const aid = profileDisplayId(Number((acc && acc.iAccountId) || 1));
+      const aid = profileDisplayId(zoneAccountId);
       const nm = ACTIVE_ROLE_NAME;
       const nodes = sdp.decode(body || entry.body);
       const out = nodes.map((n) => {
@@ -1551,15 +1572,13 @@ function handleZoneOpcode(sock, opcode, seq, label, raw) {
       body = sdp.encode(out);
     } catch (_) {}
     console.log(
-      `[${label}] override iUid=${profileDisplayId(Number((CURRENT_ACCOUNT && CURRENT_ACCOUNT.iAccountId) || 1))} (PROFILE_ID) sName/iLevel pada Cmd_Role_GetInfo_SC`,
+      `[${label}] override iUid=${profileDisplayId(zoneAccountId)} (PROFILE_ID) sName/iLevel pada Cmd_Role_GetInfo_SC`,
     );
   }
   if (NAME_OVERRIDE && respOpcode === ACCOUNT_GET_SC) {
     // tag 0 = iAccountId (id akun di DB), BUKAN uid role.
-    let accountId = 1;
+    let accountId = zoneAccountId;
     try {
-      const acc = CURRENT_ACCOUNT;
-      accountId = Number((acc && acc.iAccountId) || 1);
       const aid = profileDisplayId(accountId);
       const nm = ACTIVE_ROLE_NAME;
       const nodes = sdp.decode(body || entry.body);
@@ -1618,10 +1637,10 @@ function handleZoneOpcode(sock, opcode, seq, label, raw) {
     try {
       body = patchCmdBattleGetBattleDataBody(
         body || entry.body,
-        currentRoleProfile(),
+        currentRoleProfile(zoneAccountId),
       );
       console.log(
-        `[${label}] patch Cmd_Battle_GetBattleData_SC uid=${currentRoleProfile().uid} svr=${ROLE_SVR_ID}`,
+        `[${label}] patch Cmd_Battle_GetBattleData_SC uid=${currentRoleProfile(zoneAccountId).uid} svr=${ROLE_SVR_ID}`,
       );
     } catch (e) {
       console.log(`[${label}] PATCH GAGAL Cmd_Battle_GetBattleData_SC: ${e.message}`);
@@ -1630,14 +1649,13 @@ function handleZoneOpcode(sock, opcode, seq, label, raw) {
   }
   if (NAME_OVERRIDE) body = patchLegacyRoleName(body || entry.body, ACTIVE_ROLE_NAME);
   if (NAME_OVERRIDE && respOpcode === FRIEND_LIST_SC) {
-    const acc = CURRENT_ACCOUNT;
     body = patchFriendListBody(
       body || entry.body,
-      Number((acc && acc.iAccountId) || 1),
+      zoneAccountId,
       ACTIVE_ROLE_NAME,
     );
     console.log(
-      `[${label}] filter self dari Cmd_Friend_GetFriendList_SC (uid=${profileDisplayId(Number((acc && acc.iAccountId) || 1))})`,
+      `[${label}] filter self dari Cmd_Friend_GetFriendList_SC (uid=${profileDisplayId(zoneAccountId)})`,
     );
   }
   sock.write(renderFrame(entry, seq, body));
