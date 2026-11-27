@@ -43,6 +43,7 @@ const {
   findAuthAccountById,
   getLastAccountId,
   setLastAccountId,
+  listAuthAccountIds,
   createAuthAccount,
   ensureRoleInitFields,
   HERO_DATA_FIELDS,
@@ -159,11 +160,20 @@ function roleIdentity(accountId) {
   const id = Number(accountId || 1);
   const row = ensureRoleInitFields(id);
   const values = row ? row.values : {};
+  const num = (tag, fallback) =>
+    values[tag] !== undefined ? Number(values[tag]) : fallback;
   return {
     row,
     playerNo: row ? row.playerNo : 1,
     name: values[1] !== undefined ? String(values[1]) : ROLE_NAME,
     level: values[3] !== undefined ? Number(values[3]) : LEVEL,
+    // Field tambahan untuk FriendBaseInfo pada rekomendasi teman.
+    faceId: num(7, ROLE_FACE),
+    nationality: num(8, ROLE_NATIONALITY),
+    lastLoginTime: num(13, Math.floor(Date.now() / 1000)),
+    rankLevel: num(15, ROLE_RANK),
+    pvpRank: num(17, 2855),
+    faceBorderId: num(19, ROLE_BORDER),
   };
 }
 
@@ -296,6 +306,10 @@ const ROLE_INFO_SC = 0x7000a04f;
 const ACCOUNT_GET_SC = 0x7000e04f;
 /** Daftar teman; capture lama bisa memuat identitas lokal sebagai "teman". */
 const FRIEND_LIST_SC = 0x70009057;
+/** Balasan 0x7000a457: daftar rekomendasi teman di panel Add Friends. */
+const RECOMMEND_FRIEND_SC = 0x7000a557;
+/** Jumlah maksimal rekomendasi yang dikirim (mengikuti jumlah capture asli). */
+const RECOMMEND_FRIEND_LIMIT = 6;
 
 /** Cmd_Net_ServerTime_SC: tag 0 = epoch milidetik, tag 1 = offset zona waktu. */
 const SERVER_TIME_SC = 0x7000a04e;
@@ -1002,6 +1016,66 @@ function patchRoleInfoBody(bodyBuf, accountId) {
 }
 
 /**
+ * Bangun satu FriendBaseInfo untuk rekomendasi teman. Template dari capture
+ * dipertahankan supaya field tampilan lain (tim, versi klien, dll) tetap
+ * dikenal klien; identitas utama ditimpa dari `role_init_fields`.
+ */
+function buildRecommendFriendItem(otherAccountId, template) {
+  const identity = roleIdentity(otherAccountId);
+  const fields = template && template.type === sdp.T.STRUCT
+    ? template.fields.map((f) => ({ ...f }))
+    : [];
+  setSdpInt(fields, 0, profileDisplayId(otherAccountId)); // ulUid
+  setSdpInt(fields, 1, ROLE_SVR_ID); // uiSvrId
+  setSdpString(fields, 2, identity.name); // sName
+  setSdpInt(fields, 3, identity.level); // uiLevel
+  setSdpInt(fields, 4, identity.faceId); // uiFaceId
+  setSdpInt(fields, 5, identity.lastLoginTime); // uiLastLoginTime
+  setSdpInt(fields, 6, 2); // uiStatus: online
+  setSdpInt(fields, 8, identity.rankLevel); // uiRankLevel
+  setSdpInt(fields, 9, identity.pvpRank); // uiPVPRank
+  setSdpInt(fields, 14, identity.faceBorderId); // iFaceBorderId
+  setSdpInt(fields, 15, identity.nationality); // uiNationality
+  // DB lokal tidak menyimpan face path; kosongi supaya tidak memakai avatar
+  // pemain dari capture.
+  setSdpString(fields, 16, "");
+  return { tag: 0, type: sdp.T.STRUCT, fields };
+}
+
+/**
+ * Patch Cmd_Friend_RecommendFriend_SC (0x7000a557) supaya `vecFriends`
+ * berisi akun-akun dari `state/game.db`, bukan pemain dari capture. Akun yang
+ * sedang login disingkirkan dari daftar rekomendasi.
+ */
+function patchRecommendFriendBody(bodyBuf, accountId) {
+  const selfId = Number(accountId || 0);
+  const candidates = listAuthAccountIds()
+    .filter((id) => id !== selfId)
+    .slice(0, RECOMMEND_FRIEND_LIMIT);
+  const nodes = sdp.decode(bodyBuf || Buffer.alloc(0));
+  const out = nodes.map((n) => {
+    if (n.type !== sdp.T.STRUCT) return n;
+    const fields = n.fields.map((f) => ({ ...f }));
+    const list = fields.find(
+      (f) => f.tag === 0 && f.type === sdp.T.LIST && Array.isArray(f.items),
+    );
+    if (!list) return { ...n, fields };
+    const template = list.items.find((it) => it.type === sdp.T.STRUCT) || null;
+    const items = candidates.map((id) => buildRecommendFriendItem(id, template));
+    const idx = fields.indexOf(list);
+    fields[idx] = { ...list, items };
+    // iForceRecomNum mengikuti jumlah kandidat dari DB.
+    setSdpInt(fields, 1, items.length);
+    return { ...n, fields };
+  });
+  return {
+    body: sdp.encode(out),
+    count: candidates.length,
+    accountIds: candidates,
+  };
+}
+
+/**
  * Patch Cmd_Hero_GetList_SC dari tabel `hero_get_list` (hasil query
  * `cmd_hero_data`). Setiap hero diatur sendiri-sendiri; field dengan nilai 0
  * dianggap belum diset dan field lama dihapus supaya DB yang berkuasa.
@@ -1681,6 +1755,24 @@ function handleZoneOpcode(sock, opcode, seq, label, raw) {
       `[${label}] override iAccountId=${profileDisplayId(accountId)} iUid=${profileDisplayId(accountId)} sName=${roleIdentity(accountId).name} pada Cmd_Account_GetAccount_SC`,
     );
   }
+  if (NAME_OVERRIDE && respOpcode === RECOMMEND_FRIEND_SC) {
+    const recommendAccountId = zoneAccountId || resolveRequestAccountId(raw, sock);
+    try {
+      const patched = patchRecommendFriendBody(
+        body || entry.body,
+        recommendAccountId,
+      );
+      body = patched.body;
+      console.log(
+        `[${label}] patch Cmd_Friend_RecommendFriend_SC dari DB account=${recommendAccountId} jumlah=${patched.count} ids=[${patched.accountIds.join(",")}]`,
+      );
+    } catch (e) {
+      console.log(
+        `[${label}] PATCH GAGAL Cmd_Friend_RecommendFriend_SC: ${e.message}`,
+      );
+      body = entry.body;
+    }
+  }
   if (EMULATE && respOpcode === 0x7000a251) {
     try {
       const heroAccountId = resolveRequestAccountId(raw, sock);
@@ -2042,6 +2134,7 @@ module.exports = {
   PROFILE_ID_OFFSET,
   patchAuthSimpleRoleInfo,
   patchRoleInfoBody,
+  patchRecommendFriendBody,
   patchFriendListBody,
   patchCmdHeroGetListBody,
   patchCmdBattleGetBattleDataBody,

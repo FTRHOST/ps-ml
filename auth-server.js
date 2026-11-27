@@ -547,6 +547,15 @@ function getLastAccountId() {
 function setLastAccountId(accountId) {
   setServerState("last_account_id", String(accountId));
 }
+/** Semua id akun DB, diurutkan; dipakai sebagai kandidat rekomendasi teman. */
+function listAuthAccountIds() {
+  return AUTH_DB.prepare(
+    "SELECT i_account_id FROM auth_accounts ORDER BY i_account_id ASC",
+  )
+    .all()
+    .map((row) => Number(row.i_account_id))
+    .filter((id) => Number.isInteger(id) && id > 0);
+}
 
 // Migrasi ringan: pastikan kolom i_region_id ada pada database lama.
 {
@@ -1559,6 +1568,7 @@ module.exports = {
   findAuthAccountById,
   getLastAccountId,
   setLastAccountId,
+  listAuthAccountIds,
   createAuthAccount,
   registerAuthAccount,
   ROLE_INIT_FIELDS,
