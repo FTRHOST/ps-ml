@@ -202,6 +202,8 @@ const ROLE_BORDER = Number(process.env.ROLE_BORDER || ROLE.faceBorderId || 127);
 const ROLE_SVR_ID = Number(
   process.env.ROLE_SVR_ID || ROLE.serverId || ROLE.zoneId || 9218,
 );
+/** Versi klien yang diiklankan ke CheckUpgrade dan FriendBaseInfo. */
+const CLIENT_VERSION = process.env.CLIENT_VERSION || "2.2.30.1235.1";
 /**
  * Uid yang dikirim di Cmd_Login_Auth_SC. Default mengikuti ROLE_UID supaya
  * SystemData.m_uiID klien tidak 0 (Preparation diblokir bila 0).
@@ -822,6 +824,39 @@ function extractCsBody(raw) {
   }
 }
 
+/**
+ * Uid akun tujuan pada request profil (Cmd_Role_GetBaseInfo_CS 0x70009f4f)
+ * maupun BattleData (Cmd_Battle_GetBattleData_CS 0x7000d694). Struct pertama
+ * membawa tag 0 = uid tujuan dan tag 1 = svrId. Uid di wire memakai offset
+ * profil (1000000 + id DB), jadi dibalik dengan accountIdFromDisplay().
+ * Bila field tidak ada / bukan akun lokal, fallback ke akun socket (viewer).
+ */
+function resolveProfileTargetAccountId(raw, sock) {
+  try {
+    const reqBody = extractCsBody(raw);
+    if (reqBody) {
+      const root = sdp.decode(reqBody).find((n) => n.type === sdp.T.STRUCT);
+      const uidField =
+        root && root.fields
+          ? root.fields.find(
+              (f) =>
+                f.tag === 0 &&
+                (f.type === sdp.T.INT || f.type === sdp.T.NEG),
+            )
+          : null;
+      if (uidField) {
+        const target = accountIdFromDisplay(uidField.v);
+        if (target && findAuthAccountById(target)) return target;
+      }
+    }
+  } catch (_) {
+    // fallback ke akun socket
+  }
+  return sock && sock.mlAccountId
+    ? sock.mlAccountId
+    : resolveRequestAccountId(raw, sock);
+}
+
 /** Body SC tanpa field: root struct + StructEnd penutup. */
 const EMPTY_SC_BODY = Buffer.from([0x70, 0x80, 0x80]);
 
@@ -1023,7 +1058,7 @@ function patchRoleInfoBody(bodyBuf, accountId) {
 function buildRecommendFriendItem(otherAccountId, template) {
   const identity = roleIdentity(otherAccountId);
   const fields = template && template.type === sdp.T.STRUCT
-    ? template.fields.map((f) => ({ ...f }))
+    ? template.fields.filter((f) => f.tag !== 6).map((f) => ({ ...f }))
     : [];
   setSdpInt(fields, 0, profileDisplayId(otherAccountId)); // ulUid
   setSdpInt(fields, 1, ROLE_SVR_ID); // uiSvrId
@@ -1031,9 +1066,11 @@ function buildRecommendFriendItem(otherAccountId, template) {
   setSdpInt(fields, 3, identity.level); // uiLevel
   setSdpInt(fields, 4, identity.faceId); // uiFaceId
   setSdpInt(fields, 5, identity.lastLoginTime); // uiLastLoginTime
-  setSdpInt(fields, 6, 2); // uiStatus: online
+  // tag 6 (uiStatus) sengaja dihapus, seperti entri offline di capture asli.
+  // Kehadiran field status membuat klien melabeli "Online" meski nilainya 0.
   setSdpInt(fields, 8, identity.rankLevel); // uiRankLevel
   setSdpInt(fields, 9, identity.pvpRank); // uiPVPRank
+  setSdpString(fields, 13, CLIENT_VERSION); // sClientVersion
   setSdpInt(fields, 14, identity.faceBorderId); // iFaceBorderId
   setSdpInt(fields, 15, identity.nationality); // uiNationality
   // DB lokal tidak menyimpan face path; kosongi supaya tidak memakai avatar
@@ -1281,10 +1318,7 @@ function handleAuthOpcode(sock, opcode, seq, style, label, raw) {
             if (f.tag === 2 && f.type === sdp.T.STRING) {
               return {
                 ...f,
-                raw: Buffer.from(
-                  process.env.CLIENT_VERSION || "2.2.30.1256.1",
-                  "utf8",
-                ),
+                raw: Buffer.from(CLIENT_VERSION, "utf8"),
               };
             }
             if (f.tag === 13 && f.type === sdp.T.STRING) {
@@ -1594,23 +1628,21 @@ function handleZoneOpcode(sock, opcode, seq, label, raw) {
 
   if (EMULATE && opcode === 0x7000d694) {
     // Cmd_Battle_GetBattleData_CS: Preparation menunggu balasan ini.
-    const body = buildCmdBattleGetBattleDataSCBody(
-      currentRoleProfile(zoneAccountId),
-    );
+    // Request membawa uid tujuan di struct tag 0; jangan selalu pakai viewer.
+    const targetAccountId = resolveProfileTargetAccountId(raw, sock);
+    const targetProfile = currentRoleProfile(targetAccountId);
+    const body = buildCmdBattleGetBattleDataSCBody(targetProfile);
     const entry = REPLAY_CACHE.get(hex32(0x7000d794));
     let scBody = body;
     if (entry) {
       try {
-        scBody = patchCmdBattleGetBattleDataBody(
-          entry.body,
-          currentRoleProfile(zoneAccountId),
-        );
+        scBody = patchCmdBattleGetBattleDataBody(entry.body, targetProfile);
       } catch (_) {
         scBody = body;
       }
     }
     console.log(
-      `[${label}] Cmd_Battle_GetBattleData_CS -> Cmd_Battle_GetBattleData_SC (uid=${currentRoleProfile(zoneAccountId).uid} svr=${ROLE_SVR_ID})`,
+      `[${label}] Cmd_Battle_GetBattleData_CS -> Cmd_Battle_GetBattleData_SC (uid=${targetProfile.uid} svr=${ROLE_SVR_ID} target=${targetAccountId})`,
     );
     sendZoneReply(sock, 0x7000d794, seq, raw, scBody);
     return;
@@ -1694,22 +1726,23 @@ function handleZoneOpcode(sock, opcode, seq, label, raw) {
     );
   }
   if (NAME_OVERRIDE && respOpcode === ROLE_INFO_SC) {
-    // Klien menyegarkan info role lewat opcode ini; tanpa patch, level kembali
-    // ke nilai capture lama.
+    // Klien meminta profil akun lain lewat uid di request (bukan uid socket).
+    // Memakai zoneAccountId di sini membuat semua profil jadi profil viewer.
+    const targetAccountId = resolveProfileTargetAccountId(raw, sock);
     let identity = {
-      name: roleIdentity(zoneAccountId).name,
-      level: roleIdentity(zoneAccountId).level,
+      name: roleIdentity(targetAccountId).name,
+      level: roleIdentity(targetAccountId).level,
     };
     let counts = { heroes: 0, skins: 0 };
     try {
-      const patched = patchRoleInfoBody(body || entry.body, zoneAccountId);
+      const patched = patchRoleInfoBody(body || entry.body, targetAccountId);
       body = patched.body;
       identity = patched.identity;
       counts = patched.counts;
     } catch (_) {}
     body = patchField(body || entry.body, LEVEL_TAG, identity.level);
     console.log(
-      `[${label}] override iUid=${profileDisplayId(zoneAccountId)} sName=${identity.name} iLevel=${identity.level} heroNum=${counts.heroes} skinNum=${counts.skins} pada Cmd_Role_GetInfo_SC`,
+      `[${label}] override iUid=${profileDisplayId(targetAccountId)} sName=${identity.name} iLevel=${identity.level} heroNum=${counts.heroes} skinNum=${counts.skins} target=${targetAccountId} pada Cmd_Role_GetInfo_SC`,
     );
   }
   if (NAME_OVERRIDE && respOpcode === ACCOUNT_GET_SC) {
@@ -1790,12 +1823,11 @@ function handleZoneOpcode(sock, opcode, seq, label, raw) {
   }
   if (EMULATE && respOpcode === 0x7000d794) {
     try {
-      body = patchCmdBattleGetBattleDataBody(
-        body || entry.body,
-        currentRoleProfile(zoneAccountId),
-      );
+      const targetAccountId = resolveProfileTargetAccountId(raw, sock);
+      const targetProfile = currentRoleProfile(targetAccountId);
+      body = patchCmdBattleGetBattleDataBody(body || entry.body, targetProfile);
       console.log(
-        `[${label}] patch Cmd_Battle_GetBattleData_SC uid=${currentRoleProfile(zoneAccountId).uid} svr=${ROLE_SVR_ID}`,
+        `[${label}] patch Cmd_Battle_GetBattleData_SC uid=${targetProfile.uid} svr=${ROLE_SVR_ID} target=${targetAccountId}`,
       );
     } catch (e) {
       console.log(`[${label}] PATCH GAGAL Cmd_Battle_GetBattleData_SC: ${e.message}`);
@@ -2140,6 +2172,7 @@ module.exports = {
   patchCmdBattleGetBattleDataBody,
   buildCmdBattleGetBattleDataSCBody,
   extractCsBody,
+  resolveProfileTargetAccountId,
   sendZoneReply,
   renderFrame,
   probeUnpack,
