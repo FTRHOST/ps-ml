@@ -316,6 +316,11 @@ function parsePorts(value, fallback) {
 }
 const AUTH_PORTS = parsePorts(process.env.AUTH_PORT, "30021,30071");
 const ZONE_PORTS = parsePorts(process.env.ZONE_PORT, "30101,10003,30103");
+// Alamat zone yang dikirim ke klien. Bisa beda dengan SERVER_IP bila PC dan
+// klien berada di hotspot yang sama: Android mengisolasi klien satu sama lain,
+// jadi klien tidak bisa ARP langsung ke IP PC. Pakai IP gateway/AP (mis.
+// 192.168.8.109) supaya klien mengirim lewat device lalu kena DNAT.
+const ZONE_ADVERTISE_IP = process.env.ZONE_ADVERTISE_IP || SERVER_IP;
 
 function parseAddr(value, fallback) {
   const s = String(value || fallback);
@@ -1096,7 +1101,13 @@ function handleAuthOpcode(sock, opcode, seq, style, label, raw) {
           if (n.type !== sdp.T.STRUCT) return n;
           const fields = n.fields.map((f) => {
             if (f.tag === 1 && f.type === sdp.T.STRING) {
-              return { ...f, raw: Buffer.from(`${SERVER_IP}:${ZONE_PORTS[0]}`, "utf8") };
+              return {
+                ...f,
+                raw: Buffer.from(
+                  `${ZONE_ADVERTISE_IP}:${ZONE_PORTS[0]}`,
+                  "utf8",
+                ),
+              };
             }
             if (f.tag === 2 && f.type === sdp.T.STRING) {
               return {
@@ -1108,7 +1119,13 @@ function handleAuthOpcode(sock, opcode, seq, style, label, raw) {
               };
             }
             if (f.tag === 13 && f.type === sdp.T.STRING) {
-              return { ...f, raw: Buffer.from(`${SERVER_IP}:${ZONE_PORTS[0]}`, "utf8") };
+              return {
+                ...f,
+                raw: Buffer.from(
+                  `${ZONE_ADVERTISE_IP}:${ZONE_PORTS[0]}`,
+                  "utf8",
+                ),
+              };
             }
             return { ...f };
           });
@@ -1163,7 +1180,10 @@ function handleAuthOpcode(sock, opcode, seq, style, label, raw) {
     console.log(
       `[${label}] Cmd_Login_CheckUpgrade_CS -> Cmd_Login_CheckUpgrade_SC`,
     );
-    built = buildLoginCheckUpgradeSC(seq, `${SERVER_IP}:${ZONE_PORTS[0]}`);
+    built = buildLoginCheckUpgradeSC(
+      seq,
+      `${ZONE_ADVERTISE_IP}:${ZONE_PORTS[0]}`,
+    );
   } else if (opcode === 0x70000701) {
     console.log(
       `[${label}] Cmd_Login_GetBulletin_CS -> Cmd_Login_GetBulletin_SC`,
@@ -1867,6 +1887,7 @@ async function main() {
   console.log(`   Port Auth : ${AUTH_PORTS.join(", ")}`);
   console.log(`   Port Zone : ${ZONE_PORTS.join(", ")}`);
   console.log(`   Server IP : ${SERVER_IP}`);
+  console.log(`   Zone adv  : ${ZONE_ADVERTISE_IP}:${ZONE_PORTS[0]}`);
   console.log("   ColdStart : Handled (-45 Session Expired)");
   console.log("   CDN Mode  : Official Moonton CDN");
   console.log("====================================================");
