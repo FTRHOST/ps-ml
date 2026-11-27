@@ -140,11 +140,29 @@ let ACTIVE_ROLE_NAME = ROLE_NAME;
 let ACTIVE_LEVEL = LEVEL;
 
 function applyRoleInitFields(accountId) {
-  const row = ensureRoleInitFields(accountId);
-  if (!row) return null;
-  if (row.values[1]) ACTIVE_ROLE_NAME = String(row.values[1]);
-  if (row.values[3] !== undefined) ACTIVE_LEVEL = Number(row.values[3]);
-  return row;
+  const identity = roleIdentity(accountId);
+  if (!identity.row) return null;
+  ACTIVE_ROLE_NAME = identity.name;
+  ACTIVE_LEVEL = identity.level;
+  return identity.row;
+}
+
+/**
+ * Identitas role milik akun tertentu (dibaca dari `role_init_fields`).
+ * ACTIVE_ROLE_NAME/ACTIVE_LEVEL hanya fallback saat belum ada akun login;
+ * keduanya berubah ketika akun lain login, jadi tidak boleh dipakai untuk
+ * mematch response socket yang sedang dilayani.
+ */
+function roleIdentity(accountId) {
+  const id = Number(accountId || 1);
+  const row = ensureRoleInitFields(id);
+  const values = row ? row.values : {};
+  return {
+    row,
+    playerNo: row ? row.playerNo : 1,
+    name: values[1] !== undefined ? String(values[1]) : ROLE_NAME,
+    level: values[3] !== undefined ? Number(values[3]) : LEVEL,
+  };
 }
 
 /** Uid role yang dipakai capture; uid kecil (1) dianggap role baru oleh klien. */
@@ -704,7 +722,7 @@ function patchLegacyRoleName(bodyBuf, name) {
 function patchFriendListBody(bodyBuf, accountId, name) {
   if (!bodyBuf) return bodyBuf;
   const selfId = BigInt(profileDisplayId(accountId));
-  const selfName = Buffer.from(name || ACTIVE_ROLE_NAME, "utf8");
+  const selfName = Buffer.from(name || ROLE_NAME, "utf8");
   try {
     const nodes = sdp.decode(bodyBuf);
     const out = nodes.map((n) => {
@@ -853,8 +871,8 @@ function currentRoleProfile(accountId) {
     uid: BigInt(accountUid),
     svrId: ROLE_SVR_ID,
     zoneId: ROLE_SVR_ID,
-    name: ACTIVE_ROLE_NAME,
-    level: LEVEL,
+    name: roleIdentity(accountId).name,
+    level: roleIdentity(accountId).level,
     faceId: ROLE_FACE,
     nationality: ROLE_NATIONALITY,
     rankLevel: ROLE_RANK,
@@ -908,7 +926,8 @@ function setSdpString(fields, tag, value) {
  * vSimpleRoleInfo (tag 20) dari capture punya bChangeName=1; klien memaksa
  * ganti nama worldwide bila field ini benar.
  */
-function patchAuthSimpleRoleInfo(bodyBuf) {
+function patchAuthSimpleRoleInfo(bodyBuf, accountId) {
+  const identity = roleIdentity(accountId);
   const nodes = sdp.decode(bodyBuf);
   const out = nodes.map((n) => {
     if (n.type !== sdp.T.STRUCT) return n;
@@ -924,13 +943,13 @@ function patchAuthSimpleRoleInfo(bodyBuf) {
         setSdpInt(fs, 2, ROLE_NATIONALITY);
         setSdpInt(fs, 3, 0); // bChangeName
         setSdpInt(fs, 4, ROLE_NATIONALITY);
-        setSdpInt(fs, 5, ACTIVE_LEVEL);
+        setSdpInt(fs, 5, identity.level);
         setSdpString(fs, 7, "ID");
         return { ...it, fields: fs };
       });
       fields[fields.indexOf(roleList)] = { ...roleList, items };
     }
-    setSdpString(fields, 8, ACTIVE_ROLE_NAME);
+    setSdpString(fields, 8, identity.name);
     return { ...n, fields };
   });
   return sdp.encode(out);
@@ -1120,9 +1139,9 @@ function handleAuthOpcode(sock, opcode, seq, style, label, raw) {
       // akun baru dan membuka UI Create Character. Tandai sebagai akun lama
       // agar langsung masuk lobby dengan role dari replay.
       body = patchStructField(body, 12, 0);
-      body = patchAuthSimpleRoleInfo(body);
+      body = patchAuthSimpleRoleInfo(body, accountId);
       console.log(
-        `[AUTH] override iAccountId=${profileDisplayId(accountId)} (PROFILE_ID) bNewAccount=0 bChangeName=0 level=${ACTIVE_LEVEL} pada Cmd_Login_Auth_SC`,
+        `[AUTH] override iAccountId=${profileDisplayId(accountId)} (PROFILE_ID) bNewAccount=0 bChangeName=0 level=${roleIdentity(accountId).level} pada Cmd_Login_Auth_SC`,
       );
     } else if (respOpcode === 0x70000601) {
       try {
@@ -1249,7 +1268,7 @@ function handleZoneOpcode(sock, opcode, seq, label, raw) {
   // Identitas harus per-socket. Global CURRENT_ACCOUNT bisa tertimpa akun lain
   // ketika dua klien login bersamaan, menyebabkan Auth/Role_Init satu akun
   // tetapi GetAccount/FriendList memakai akun lain.
-  const zoneAccountId = resolveRequestAccountId(raw, sock);
+  let zoneAccountId = resolveRequestAccountId(raw, sock);
   if (opcode === 0x7000914e) {
     // Balasan resmi berisi sSessionKey base64 68 karakter. Utamakan frame asli
     // dari capture supaya kunci sesi yang dipakai klien benar-benar valid.
@@ -1289,13 +1308,14 @@ function handleZoneOpcode(sock, opcode, seq, label, raw) {
     } catch (_) {}
     // Klien memakai sOriWord dari SC sebagai nama saat mengirim role baru.
     // Urutan tag SC yang diterima klien: 0 = sOriWord, 1 = bHitDirty.
-    // Kirim identitas lokal supaya karakter dibuat dengan nama petwir0x.
+    // Kirim identitas akun yang sedang dilayani, bukan akun terakhir yang login.
+    const roleName = roleIdentity(zoneAccountId).name;
     const scBody = sdp.buildBody([
-      sdp.node.str(0, ACTIVE_ROLE_NAME),
+      sdp.node.str(0, roleName),
       sdp.node.int(1, 0), // bHitDirty = false
     ]);
     console.log(
-      `[${label}] Cmd_Role_CheckNameDirty_CS -> SC (request=${name || "-"} -> ${ACTIVE_ROLE_NAME} clean)`,
+      `[${label}] Cmd_Role_CheckNameDirty_CS -> SC (request=${name || "-"} -> ${roleName} clean)`,
     );
     sendZoneReply(sock, 0x7000fc4e, seq, raw, scBody);
     return;
@@ -1534,6 +1554,7 @@ function handleZoneOpcode(sock, opcode, seq, label, raw) {
     let accountId = account ? Number(account.iAccountId || 0) : 0;
     if (!accountId) accountId = resolveRequestAccountId(raw, sock);
     sock.mlAccountId = accountId; // binding akun untuk seluruh request di socket ini
+    zoneAccountId = accountId;
     setLastAccountId(accountId);
     // Identitas role sepenuhnya diatur tabel role_init_fields (i_account_id =
     // primary key). iUid = PK, sName = Petwir_<urutan akun>, iExp = 27446,
@@ -1555,13 +1576,14 @@ function handleZoneOpcode(sock, opcode, seq, label, raw) {
   if (NAME_OVERRIDE && respOpcode === ROLE_INFO_SC) {
     // Klien menyegarkan info role lewat opcode ini; tanpa patch, level kembali
     // ke nilai capture lama.
-    body = patchField(body || entry.body, LEVEL_TAG, ACTIVE_LEVEL);
+    const identity = roleIdentity(zoneAccountId);
+    body = patchField(body || entry.body, LEVEL_TAG, identity.level);
     // Patch iUid/ulUid (tag 0) dan sName (tag 2). Capture menyimpan
-    // 332108113/Fathir_Qepo; semua harus mengikuti PROFILE_ID agar profiling
-    // tidak dianggap sebagai pemain lain.
+    // 332108113/Fathir_Qepo; semua harus mengikuti akun socket ini agar
+    // profiling tidak memakai nama akun yang sedang login di perangkat lain.
     try {
       const aid = profileDisplayId(zoneAccountId);
-      const nm = ACTIVE_ROLE_NAME;
+      const nm = identity.name;
       const nodes = sdp.decode(body || entry.body);
       const out = nodes.map((n) => {
         if (n.type !== sdp.T.STRUCT) return n;
@@ -1579,7 +1601,7 @@ function handleZoneOpcode(sock, opcode, seq, label, raw) {
       body = sdp.encode(out);
     } catch (_) {}
     console.log(
-      `[${label}] override iUid=${profileDisplayId(zoneAccountId)} (PROFILE_ID) sName/iLevel pada Cmd_Role_GetInfo_SC`,
+      `[${label}] override iUid=${profileDisplayId(zoneAccountId)} sName=${identity.name} iLevel=${identity.level} pada Cmd_Role_GetInfo_SC`,
     );
   }
   if (NAME_OVERRIDE && respOpcode === ACCOUNT_GET_SC) {
@@ -1587,7 +1609,7 @@ function handleZoneOpcode(sock, opcode, seq, label, raw) {
     let accountId = zoneAccountId;
     try {
       const aid = profileDisplayId(accountId);
-      const nm = ACTIVE_ROLE_NAME;
+      const nm = roleIdentity(accountId).name;
       const nodes = sdp.decode(body || entry.body);
       const out = nodes.map((n) => {
         if (n.type !== sdp.T.STRUCT) return n;
@@ -1622,7 +1644,7 @@ function handleZoneOpcode(sock, opcode, seq, label, raw) {
       body = sdp.encode(out);
     } catch (_) {}
     console.log(
-      `[${label}] override iAccountId=${profileDisplayId(accountId)} iUid=${profileDisplayId(accountId)} (PROFILE_ID) sName pada Cmd_Account_GetAccount_SC`,
+      `[${label}] override iAccountId=${profileDisplayId(accountId)} iUid=${profileDisplayId(accountId)} sName=${roleIdentity(accountId).name} pada Cmd_Account_GetAccount_SC`,
     );
   }
   if (EMULATE && respOpcode === 0x7000a251) {
@@ -1654,13 +1676,10 @@ function handleZoneOpcode(sock, opcode, seq, label, raw) {
       body = entry.body;
     }
   }
-  if (NAME_OVERRIDE) body = patchLegacyRoleName(body || entry.body, ACTIVE_ROLE_NAME);
+  const accountRoleName = roleIdentity(zoneAccountId).name;
+  if (NAME_OVERRIDE) body = patchLegacyRoleName(body || entry.body, accountRoleName);
   if (NAME_OVERRIDE && respOpcode === FRIEND_LIST_SC) {
-    body = patchFriendListBody(
-      body || entry.body,
-      zoneAccountId,
-      ACTIVE_ROLE_NAME,
-    );
+    body = patchFriendListBody(body || entry.body, zoneAccountId, accountRoleName);
     console.log(
       `[${label}] filter self dari Cmd_Friend_GetFriendList_SC (uid=${profileDisplayId(zoneAccountId)})`,
     );
@@ -1680,7 +1699,7 @@ function handleZoneOpcode(sock, opcode, seq, label, raw) {
       setTimeout(() => {
         if (!sock.destroyed) {
           const pushBody = NAME_OVERRIDE
-            ? patchLegacyRoleName(pushEntry.body, ACTIVE_ROLE_NAME)
+            ? patchLegacyRoleName(pushEntry.body, accountRoleName)
             : null;
           sock.write(renderFrame(pushEntry, seq, pushBody));
         }
@@ -1985,6 +2004,7 @@ module.exports = {
   patchRoleInitBinary,
   profileDisplayId,
   accountIdFromDisplay,
+  roleIdentity,
   PROFILE_ID_OFFSET,
   patchAuthSimpleRoleInfo,
   patchFriendListBody,
