@@ -779,18 +779,23 @@ function refreshHeroGetList(accountId) {
   return getHeroGetList(id);
 }
 
-/** Hero default untuk akun baru: 1 sampai 10, semua field = 0 (belum diset). */
+/** Hero default untuk setiap akun: 1 sampai 135, semua field = 0 (belum diset). */
 const DEFAULT_OWNED_HEROES = Object.freeze(
-  Array.from({ length: 10 }, (_, i) => ({ iHeroId: i + 1 })),
+  Array.from({ length: 135 }, (_, i) => ({ iHeroId: i + 1 })),
 );
 
-/** Pastikan akun punya data hero minimal bila belum pernah di-seed. */
+/**
+ * Pastikan akun memiliki seluruh hero default. Baris yang sudah ada tidak
+ * ditimpa supaya perubahan skin hasil "Use" tidak hilang.
+ */
 function ensureHeroDataForAccount(accountId) {
   const id = Number(accountId);
   if (!Number.isFinite(id) || id <= 0) return [];
-  if (getCmdHeroData(id).length === 0) {
-    upsertCmdHeroData(id, DEFAULT_OWNED_HEROES);
-  }
+  const existingIds = new Set(getCmdHeroData(id).map((r) => r.iHeroId));
+  const missing = DEFAULT_OWNED_HEROES.filter(
+    (row) => !existingIds.has(row.iHeroId),
+  );
+  if (missing.length) upsertCmdHeroData(id, missing);
   return refreshHeroGetList(id);
 }
 
