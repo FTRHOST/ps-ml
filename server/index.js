@@ -747,42 +747,33 @@ function patchLegacyRoleName(bodyBuf, name) {
 }
 
 /**
- * Buang entri "diri sendiri" dari Cmd_Friend_GetFriendList_SC. Capture lama
- * kadang menyimpan identitas role, lalu setelah patch nama tampak seperti
- * pemain himself di friend list. Filter berdasarkan uid PROFILE_ID atau nama.
+ * Bangun ulang Cmd_Friend_GetFriendList_SC (0x70009057) dari DB. `vecFriends`
+ * (tag 0) berisi semua akun DB kecuali viewer; field tampilan lain tetap
+ * memakai template FriendBaseInfo dari capture.
  */
 function patchFriendListBody(bodyBuf, accountId, name) {
-  if (!bodyBuf) return bodyBuf;
-  const selfId = BigInt(profileDisplayId(accountId));
-  const selfName = Buffer.from(name || ROLE_NAME, "utf8");
-  try {
-    const nodes = sdp.decode(bodyBuf);
-    const out = nodes.map((n) => {
-      if (n.type !== sdp.T.STRUCT) return n;
-      const fields = n.fields.map((f) => {
-        if (f.type !== sdp.T.LIST || !f.items) return f;
-        const items = f.items.filter((it) => {
-          if (!it || it.type !== sdp.T.STRUCT || !it.fields) return true;
-          const uid = it.fields.find(
-            (x) =>
-              x.tag === 0 &&
-              (x.type === sdp.T.INT || x.type === sdp.T.NEG) &&
-              x.v === selfId,
-          );
-          const nm = it.fields.find(
-            (x) =>
-              x.tag === 2 && x.type === sdp.T.STRING && x.raw && x.raw.equals(selfName),
-          );
-          return !uid && !nm;
-        });
-        return items.length === f.items.length ? f : { ...f, items };
-      });
-      return { ...n, fields };
-    });
-    return sdp.encode(out);
-  } catch (_) {
-    return bodyBuf;
-  }
+  const selfId = Number(accountId || 0);
+  const candidates = listAuthAccountIds().filter((id) => id !== selfId);
+  const nodes = sdp.decode(bodyBuf || Buffer.alloc(0));
+  const out = nodes.map((n) => {
+    if (n.type !== sdp.T.STRUCT) return n;
+    const fields = n.fields.map((f) => ({ ...f }));
+    const list = fields.find(
+      (f) => f.tag === 0 && f.type === sdp.T.LIST && Array.isArray(f.items),
+    );
+    if (!list) return { ...n, fields };
+    const template = list.items.find((it) => it.type === sdp.T.STRUCT) || null;
+    fields[fields.indexOf(list)] = {
+      ...list,
+      items: candidates.map((id) => buildRecommendFriendItem(id, template)),
+    };
+    return { ...n, fields };
+  });
+  return {
+    body: sdp.encode(out),
+    count: candidates.length,
+    accountIds: candidates,
+  };
 }
 
 /** Render entri cache menjadi frame siap kirim dengan seq tertentu. */
@@ -1048,6 +1039,55 @@ function patchRoleInfoBody(bodyBuf, accountId) {
     return { ...n, fields };
   });
   return { body: sdp.encode(out), identity, counts };
+}
+
+/**
+ * Bangun satu entri "visitor" pada tag 82 PlayerBaseInfo. Template capture
+ * dipertahankan (field lain dikenal klien); identitas utama dari DB. Tag 6
+ * dihapus supaya klien tidak melabeli "Online" tanpa data status yang nyata.
+ */
+function buildProfileVisitorItem(otherAccountId, template) {
+  const identity = roleIdentity(otherAccountId);
+  const fields = template && template.type === sdp.T.STRUCT
+    ? template.fields.filter((f) => f.tag !== 6).map((f) => ({ ...f }))
+    : [];
+  setSdpInt(fields, 0, profileDisplayId(otherAccountId)); // ulUid
+  setSdpInt(fields, 1, ROLE_SVR_ID); // uiSvrId
+  setSdpString(fields, 2, identity.name); // sName
+  setSdpInt(fields, 3, identity.level); // uiLevel
+  setSdpString(fields, 4, ""); // sFacePath: DB lokal tidak menyimpan path
+  setSdpInt(fields, 7, identity.rankLevel); // uiRankLevel
+  return { tag: 0, type: sdp.T.STRUCT, fields };
+}
+
+/**
+ * Patch tag 82 (`vVisitors`/daftar pemain pada panel profil) di
+ * Cmd_Role_GetInfo_SC supaya hanya berisi akun dari DB. Akun yang profilnya
+ * sedang dilihat disingkirkan dari daftar pengunjung.
+ */
+function patchRoleInfoVisitors(bodyBuf, targetAccountId) {
+  const exclude = Number(targetAccountId || 0);
+  const candidates = listAuthAccountIds().filter((id) => id !== exclude);
+  const nodes = sdp.decode(bodyBuf || Buffer.alloc(0));
+  const out = nodes.map((n) => {
+    if (n.type !== sdp.T.STRUCT) return n;
+    const fields = n.fields.map((f) => ({ ...f }));
+    const list = fields.find(
+      (f) => f.tag === 82 && f.type === sdp.T.LIST && Array.isArray(f.items),
+    );
+    if (!list) return { ...n, fields };
+    const template = list.items.find((it) => it.type === sdp.T.STRUCT) || null;
+    fields[fields.indexOf(list)] = {
+      ...list,
+      items: candidates.map((id) => buildProfileVisitorItem(id, template)),
+    };
+    return { ...n, fields };
+  });
+  return {
+    body: sdp.encode(out),
+    count: candidates.length,
+    accountIds: candidates,
+  };
 }
 
 /**
@@ -1741,6 +1781,16 @@ function handleZoneOpcode(sock, opcode, seq, label, raw) {
       counts = patched.counts;
     } catch (_) {}
     body = patchField(body || entry.body, LEVEL_TAG, identity.level);
+    // Harus setelah patchField: tag 3 dipatch di semua struct, termasuk visitor.
+    try {
+      const visitors = patchRoleInfoVisitors(body || entry.body, targetAccountId);
+      body = visitors.body;
+      console.log(
+        `[${label}] patch vVisitors Cmd_Role_GetInfo_SC target=${targetAccountId} jumlah=${visitors.count} ids=[${visitors.accountIds.join(",")}]`,
+      );
+    } catch (e) {
+      console.log(`[${label}] PATCH GAGAL vVisitors: ${e.message}`);
+    }
     console.log(
       `[${label}] override iUid=${profileDisplayId(targetAccountId)} sName=${identity.name} iLevel=${identity.level} heroNum=${counts.heroes} skinNum=${counts.skins} target=${targetAccountId} pada Cmd_Role_GetInfo_SC`,
     );
@@ -1837,10 +1887,20 @@ function handleZoneOpcode(sock, opcode, seq, label, raw) {
   const accountRoleName = roleIdentity(zoneAccountId).name;
   if (NAME_OVERRIDE) body = patchLegacyRoleName(body || entry.body, accountRoleName);
   if (NAME_OVERRIDE && respOpcode === FRIEND_LIST_SC) {
-    body = patchFriendListBody(body || entry.body, zoneAccountId, accountRoleName);
-    console.log(
-      `[${label}] filter self dari Cmd_Friend_GetFriendList_SC (uid=${profileDisplayId(zoneAccountId)})`,
-    );
+    try {
+      const patched = patchFriendListBody(
+        body || entry.body,
+        zoneAccountId,
+        accountRoleName,
+      );
+      body = patched.body;
+      console.log(
+        `[${label}] patch Cmd_Friend_GetFriendList_SC dari DB account=${zoneAccountId} jumlah=${patched.count} ids=[${patched.accountIds.join(",")}]`,
+      );
+    } catch (e) {
+      console.log(`[${label}] PATCH GAGAL Cmd_Friend_GetFriendList_SC: ${e.message}`);
+      body = entry.body;
+    }
   }
   sock.write(renderFrame(entry, seq, body));
 
@@ -2166,6 +2226,7 @@ module.exports = {
   PROFILE_ID_OFFSET,
   patchAuthSimpleRoleInfo,
   patchRoleInfoBody,
+  patchRoleInfoVisitors,
   patchRecommendFriendBody,
   patchFriendListBody,
   patchCmdHeroGetListBody,
