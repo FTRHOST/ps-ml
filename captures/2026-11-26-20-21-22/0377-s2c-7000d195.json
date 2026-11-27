@@ -1,0 +1,14 @@
+{
+  "seq": 377,
+  "dir": "s2c",
+  "port": 30103,
+  "kind": "zstd",
+  "opcode": "0x7000d195",
+  "opcode_name": "Cmd_Ping_GetAllServerIp_SC",
+  "envelope": "zstd",
+  "length": 13182,
+  "timestamp": 1795724539602,
+  "unknown": false,
+  "probe": true,
+  "inner_length": 43021
+}

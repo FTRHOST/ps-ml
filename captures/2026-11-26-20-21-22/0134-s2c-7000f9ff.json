@@ -1,0 +1,12 @@
+{
+  "seq": 134,
+  "dir": "s2c",
+  "port": 30103,
+  "kind": "frame",
+  "opcode": "0x7000f9ff",
+  "opcode_name": "Cmd_Act_CityPing_GetPing_SC",
+  "envelope": "compact",
+  "length": 34,
+  "timestamp": 1795724534428,
+  "unknown": false
+}

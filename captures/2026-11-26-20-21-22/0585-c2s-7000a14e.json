@@ -1,0 +1,12 @@
+{
+  "seq": 585,
+  "dir": "c2s",
+  "port": 30103,
+  "kind": "frame",
+  "opcode": "0x7000a14e",
+  "opcode_name": null,
+  "envelope": "compact",
+  "length": 122,
+  "timestamp": 1795724552111,
+  "unknown": false
+}

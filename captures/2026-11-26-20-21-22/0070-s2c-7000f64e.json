@@ -1,0 +1,14 @@
+{
+  "seq": 70,
+  "dir": "s2c",
+  "port": 30103,
+  "kind": "zstd",
+  "opcode": "0x7000f64e",
+  "opcode_name": "Cmd_Role_Init_SC",
+  "envelope": "zstd",
+  "length": 3012,
+  "timestamp": 1795724532046,
+  "unknown": false,
+  "probe": true,
+  "inner_length": 7515
+}

@@ -1,0 +1,12 @@
+{
+  "seq": 320,
+  "dir": "s2c",
+  "port": 30103,
+  "kind": "frame",
+  "opcode": "0x7000f256",
+  "opcode_name": "Cmd_Skill_GetAllData_SC",
+  "envelope": "compact",
+  "length": 66,
+  "timestamp": 1795724539308,
+  "unknown": false
+}

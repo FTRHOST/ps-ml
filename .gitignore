@@ -1,5 +1,5 @@
 # --- Data pribadi / hasil capture (PRD NF-3, CLAUDE.md butir 4) ---
-captures/
+# captures/ sengaja di-commit supaya sesi replay bisa dipakai bersama.
 relay-captures/
 unhandled/
 mlbb_captured_tags/

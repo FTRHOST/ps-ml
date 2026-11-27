@@ -1,0 +1,12 @@
+{
+  "seq": 1052,
+  "dir": "s2c",
+  "port": 30103,
+  "kind": "frame",
+  "opcode": "0x7000ab57",
+  "opcode_name": "Cmd_Friend_Give_BP_Info_SC",
+  "envelope": "compact",
+  "length": 20,
+  "timestamp": 1795724673780,
+  "unknown": false
+}

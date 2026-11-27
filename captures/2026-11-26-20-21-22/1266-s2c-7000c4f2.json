@@ -1,0 +1,12 @@
+{
+  "seq": 1266,
+  "dir": "s2c",
+  "port": 30103,
+  "kind": "frame",
+  "opcode": "0x7000c4f2",
+  "opcode_name": null,
+  "envelope": "compact",
+  "length": 27,
+  "timestamp": 1795724741368,
+  "unknown": false
+}

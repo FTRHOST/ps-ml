@@ -1,0 +1,13 @@
+{
+  "seq": 27,
+  "dir": "c2s",
+  "port": 30071,
+  "kind": "unknown",
+  "opcode": null,
+  "opcode_name": null,
+  "envelope": null,
+  "length": 913,
+  "timestamp": 1795724522047,
+  "unknown": true,
+  "reason": "len=36845620 di luar rentang"
+}

@@ -1,0 +1,14 @@
+{
+  "seq": 327,
+  "dir": "s2c",
+  "port": 30103,
+  "kind": "zstd",
+  "opcode": "0x70008c52",
+  "opcode_name": "Cmd_IAP_GetList_SC",
+  "envelope": "zstd",
+  "length": 533,
+  "timestamp": 1795724539338,
+  "unknown": false,
+  "probe": true,
+  "inner_length": 2173
+}

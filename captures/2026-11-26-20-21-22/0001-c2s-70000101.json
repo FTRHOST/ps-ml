@@ -1,0 +1,14 @@
+{
+  "seq": 1,
+  "dir": "c2s",
+  "port": 30021,
+  "kind": "zstd",
+  "opcode": "0x70000101",
+  "opcode_name": "Cmd_Login_Auth_CS",
+  "envelope": "zstd",
+  "length": 631,
+  "timestamp": 1795724489462,
+  "unknown": false,
+  "probe": true,
+  "inner_length": 1080
+}

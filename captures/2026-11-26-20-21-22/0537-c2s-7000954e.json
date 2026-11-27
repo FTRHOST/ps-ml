@@ -1,0 +1,12 @@
+{
+  "seq": 537,
+  "dir": "c2s",
+  "port": 30103,
+  "kind": "frame",
+  "opcode": "0x7000954e",
+  "opcode_name": "Cmd_Net_Echo_CS",
+  "envelope": "compact",
+  "length": 16,
+  "timestamp": 1795724549416,
+  "unknown": false
+}

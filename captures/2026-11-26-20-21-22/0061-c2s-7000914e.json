@@ -1,0 +1,12 @@
+{
+  "seq": 61,
+  "dir": "c2s",
+  "port": 30103,
+  "kind": "frame",
+  "opcode": "0x7000914e",
+  "opcode_name": "Cmd_Net_Connect_CS",
+  "envelope": "compact",
+  "length": 539,
+  "timestamp": 1795724531437,
+  "unknown": false
+}

@@ -1,0 +1,12 @@
+{
+  "seq": 109,
+  "dir": "s2c",
+  "port": 30103,
+  "kind": "frame",
+  "opcode": "0x7000db94",
+  "opcode_name": "Cmd_Battle_ReconnectInfo_SC",
+  "envelope": "compact",
+  "length": 19,
+  "timestamp": 1795724533474,
+  "unknown": false
+}

@@ -1,0 +1,12 @@
+{
+  "seq": 433,
+  "dir": "s2c",
+  "port": 30103,
+  "kind": "frame",
+  "opcode": "0x7000c44e",
+  "opcode_name": "Cmd_WeakNet_Test_SC",
+  "envelope": "compact",
+  "length": 21,
+  "timestamp": 1795724543839,
+  "unknown": false
+}

@@ -1,0 +1,14 @@
+{
+  "seq": 214,
+  "dir": "s2c",
+  "port": 30103,
+  "kind": "zstd",
+  "opcode": "0x70008452",
+  "opcode_name": "Cmd_Role_GetAllABTagInfo_SC",
+  "envelope": "zstd",
+  "length": 217,
+  "timestamp": 1795724538815,
+  "unknown": false,
+  "probe": true,
+  "inner_length": 253
+}

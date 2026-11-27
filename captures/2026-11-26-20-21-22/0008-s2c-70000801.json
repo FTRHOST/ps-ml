@@ -1,0 +1,12 @@
+{
+  "seq": 8,
+  "dir": "s2c",
+  "port": 30021,
+  "kind": "frame",
+  "opcode": "0x70000801",
+  "opcode_name": "Cmd_Login_GetBulletin_SC",
+  "envelope": "compact",
+  "length": 14,
+  "timestamp": 1795724490447,
+  "unknown": false
+}

@@ -1,0 +1,12 @@
+{
+  "seq": 1235,
+  "dir": "s2c",
+  "port": 30103,
+  "kind": "frame",
+  "opcode": "0x7000b4ea",
+  "opcode_name": "Cmd_Act_GetStatusById_SC",
+  "envelope": "compact",
+  "length": 50,
+  "timestamp": 1795724736245,
+  "unknown": false
+}

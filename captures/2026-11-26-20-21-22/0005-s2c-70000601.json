@@ -1,0 +1,14 @@
+{
+  "seq": 5,
+  "dir": "s2c",
+  "port": 30021,
+  "kind": "zstd",
+  "opcode": "0x70000601",
+  "opcode_name": "Cmd_Login_CheckUpgrade_SC",
+  "envelope": "zstd",
+  "length": 915,
+  "timestamp": 1795724490401,
+  "unknown": false,
+  "probe": true,
+  "inner_length": 2758
+}

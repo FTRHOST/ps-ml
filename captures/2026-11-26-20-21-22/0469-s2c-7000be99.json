@@ -1,0 +1,12 @@
+{
+  "seq": 469,
+  "dir": "s2c",
+  "port": 30103,
+  "kind": "frame",
+  "opcode": "0x7000be99",
+  "opcode_name": "Cmd_Ping_GetPingGroup_SC",
+  "envelope": "compact",
+  "length": 32,
+  "timestamp": 1795724545466,
+  "unknown": false
+}

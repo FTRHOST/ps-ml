@@ -1,0 +1,12 @@
+{
+  "seq": 249,
+  "dir": "s2c",
+  "port": 30103,
+  "kind": "frame",
+  "opcode": "0x7000c54f",
+  "opcode_name": "Cmd_Role_GetFastChat_SC",
+  "envelope": "compact",
+  "length": 124,
+  "timestamp": 1795724538990,
+  "unknown": false
+}

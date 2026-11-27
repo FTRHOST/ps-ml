@@ -1,0 +1,12 @@
+{
+  "seq": 251,
+  "dir": "s2c",
+  "port": 30103,
+  "kind": "frame",
+  "opcode": "0x7000864f",
+  "opcode_name": "Cmd_Role_GetClientInfo_SC",
+  "envelope": "compact",
+  "length": 20,
+  "timestamp": 1795724538991,
+  "unknown": false
+}

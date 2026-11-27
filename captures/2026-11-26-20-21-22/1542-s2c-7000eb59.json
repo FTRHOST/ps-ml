@@ -1,0 +1,14 @@
+{
+  "seq": 1542,
+  "dir": "s2c",
+  "port": 30103,
+  "kind": "zstd",
+  "opcode": "0x7000eb59",
+  "opcode_name": null,
+  "envelope": "zstd",
+  "length": 1126,
+  "timestamp": 1795724798719,
+  "unknown": false,
+  "probe": true,
+  "inner_length": 1494
+}

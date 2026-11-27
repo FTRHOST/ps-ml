@@ -1,0 +1,14 @@
+{
+  "seq": 111,
+  "dir": "s2c",
+  "port": 30103,
+  "kind": "zstd",
+  "opcode": "0x7000e04f",
+  "opcode_name": "Cmd_Account_GetAccount_SC",
+  "envelope": "zstd",
+  "length": 547,
+  "timestamp": 1795724533487,
+  "unknown": false,
+  "probe": true,
+  "inner_length": 848
+}

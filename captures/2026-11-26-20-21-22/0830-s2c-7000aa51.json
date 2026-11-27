@@ -1,0 +1,14 @@
+{
+  "seq": 830,
+  "dir": "s2c",
+  "port": 30103,
+  "kind": "zstd",
+  "opcode": "0x7000aa51",
+  "opcode_name": "Cmd_Hero_GetBattlePerformance_SC",
+  "envelope": "zstd",
+  "length": 544,
+  "timestamp": 1795724613170,
+  "unknown": false,
+  "probe": true,
+  "inner_length": 5247
+}

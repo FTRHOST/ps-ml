@@ -1,0 +1,12 @@
+{
+  "seq": 369,
+  "dir": "s2c",
+  "port": 30103,
+  "kind": "frame",
+  "opcode": "0x7000cb94",
+  "opcode_name": "Cmd_Act_ThreadBind_getThreadBindData_SC",
+  "envelope": "compact",
+  "length": 198,
+  "timestamp": 1795724539554,
+  "unknown": false
+}

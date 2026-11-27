@@ -1,0 +1,14 @@
+{
+  "seq": 297,
+  "dir": "s2c",
+  "port": 30103,
+  "kind": "zstd",
+  "opcode": "0x7000864f",
+  "opcode_name": "Cmd_Role_GetClientInfo_SC",
+  "envelope": "zstd",
+  "length": 3495,
+  "timestamp": 1795724539243,
+  "unknown": false,
+  "probe": true,
+  "inner_length": 8437
+}

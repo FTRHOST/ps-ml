@@ -1,0 +1,14 @@
+{
+  "seq": 1913,
+  "dir": "s2c",
+  "port": 30103,
+  "kind": "zstd",
+  "opcode": "0x7000a557",
+  "opcode_name": "Cmd_Friend_RecommendFriend_SC",
+  "envelope": "zstd",
+  "length": 2582,
+  "timestamp": 1795724849897,
+  "unknown": false,
+  "probe": true,
+  "inner_length": 4642
+}

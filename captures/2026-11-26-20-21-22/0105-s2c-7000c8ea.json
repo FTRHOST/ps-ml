@@ -1,0 +1,14 @@
+{
+  "seq": 105,
+  "dir": "s2c",
+  "port": 30103,
+  "kind": "zstd",
+  "opcode": "0x7000c8ea",
+  "opcode_name": "Cmd_Act_GetListByStage_SC",
+  "envelope": "zstd",
+  "length": 9441,
+  "timestamp": 1795724533386,
+  "unknown": false,
+  "probe": true,
+  "inner_length": 32174
+}

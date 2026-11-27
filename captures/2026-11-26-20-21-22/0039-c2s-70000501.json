@@ -1,0 +1,14 @@
+{
+  "seq": 39,
+  "dir": "c2s",
+  "port": 30021,
+  "kind": "zstd",
+  "opcode": "0x70000501",
+  "opcode_name": "Cmd_Login_CheckUpgrade_CS",
+  "envelope": "zstd",
+  "length": 556,
+  "timestamp": 1795724526952,
+  "unknown": false,
+  "probe": true,
+  "inner_length": 798
+}

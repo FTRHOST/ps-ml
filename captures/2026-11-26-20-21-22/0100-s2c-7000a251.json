@@ -1,0 +1,14 @@
+{
+  "seq": 100,
+  "dir": "s2c",
+  "port": 30103,
+  "kind": "zstd",
+  "opcode": "0x7000a251",
+  "opcode_name": "Cmd_Hero_GetList_SC",
+  "envelope": "zstd",
+  "length": 2272,
+  "timestamp": 1795724533333,
+  "unknown": false,
+  "probe": true,
+  "inner_length": 3436
+}

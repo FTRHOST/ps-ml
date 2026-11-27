@@ -1,0 +1,14 @@
+{
+  "seq": 2,
+  "dir": "s2c",
+  "port": 30021,
+  "kind": "zstd",
+  "opcode": "0x70000201",
+  "opcode_name": "Cmd_Login_Auth_SC",
+  "envelope": "zstd",
+  "length": 690,
+  "timestamp": 1795724489505,
+  "unknown": false,
+  "probe": true,
+  "inner_length": 942
+}

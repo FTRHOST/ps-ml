@@ -1,0 +1,14 @@
+{
+  "seq": 76,
+  "dir": "s2c",
+  "port": 30103,
+  "kind": "zstd",
+  "opcode": "0x7000ca65",
+  "opcode_name": "Cmd_GetClientLogReportSwitch_SC",
+  "envelope": "zstd",
+  "length": 3346,
+  "timestamp": 1795724532925,
+  "unknown": false,
+  "probe": true,
+  "inner_length": 7927
+}

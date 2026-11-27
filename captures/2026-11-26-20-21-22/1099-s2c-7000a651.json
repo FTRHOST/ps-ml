@@ -1,0 +1,14 @@
+{
+  "seq": 1099,
+  "dir": "s2c",
+  "port": 30103,
+  "kind": "zstd",
+  "opcode": "0x7000a651",
+  "opcode_name": "Cmd_Hero_GetHeroFace_SC",
+  "envelope": "zstd",
+  "length": 287,
+  "timestamp": 1795724692427,
+  "unknown": false,
+  "probe": true,
+  "inner_length": 431
+}

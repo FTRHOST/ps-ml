@@ -1,0 +1,14 @@
+{
+  "seq": 1469,
+  "dir": "s2c",
+  "port": 30103,
+  "kind": "zstd",
+  "opcode": "0x7000d05e",
+  "opcode_name": "Cmd_Live_GetFansList_SC",
+  "envelope": "zstd",
+  "length": 715,
+  "timestamp": 1795724781527,
+  "unknown": false,
+  "probe": true,
+  "inner_length": 832
+}

@@ -1,0 +1,14 @@
+{
+  "seq": 256,
+  "dir": "s2c",
+  "port": 30103,
+  "kind": "zstd",
+  "opcode": "0x7000ce5e",
+  "opcode_name": "Cmd_Live_GetFocusList_SC",
+  "envelope": "zstd",
+  "length": 11355,
+  "timestamp": 1795724539054,
+  "unknown": false,
+  "probe": true,
+  "inner_length": 17394
+}

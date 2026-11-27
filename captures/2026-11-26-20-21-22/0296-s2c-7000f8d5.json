@@ -1,0 +1,14 @@
+{
+  "seq": 296,
+  "dir": "s2c",
+  "port": 30103,
+  "kind": "zstd",
+  "opcode": "0x7000f8d5",
+  "opcode_name": "Cmd_Individual_GetList_SC",
+  "envelope": "zstd",
+  "length": 778,
+  "timestamp": 1795724539227,
+  "unknown": false,
+  "probe": true,
+  "inner_length": 1533
+}

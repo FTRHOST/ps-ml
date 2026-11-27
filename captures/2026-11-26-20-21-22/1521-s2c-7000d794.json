@@ -1,0 +1,14 @@
+{
+  "seq": 1521,
+  "dir": "s2c",
+  "port": 30103,
+  "kind": "zstd",
+  "opcode": "0x7000d794",
+  "opcode_name": "Cmd_Battle_GetBattleData_SC",
+  "envelope": "zstd",
+  "length": 6137,
+  "timestamp": 1795724794821,
+  "unknown": false,
+  "probe": true,
+  "inner_length": 17048
+}

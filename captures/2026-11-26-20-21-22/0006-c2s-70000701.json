@@ -1,0 +1,14 @@
+{
+  "seq": 6,
+  "dir": "c2s",
+  "port": 30021,
+  "kind": "zstd",
+  "opcode": "0x70000701",
+  "opcode_name": "Cmd_Login_GetBulletin_CS",
+  "envelope": "zstd",
+  "length": 166,
+  "timestamp": 1795724490417,
+  "unknown": false,
+  "probe": true,
+  "inner_length": 153
+}

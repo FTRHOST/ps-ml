@@ -1,0 +1,14 @@
+{
+  "seq": 102,
+  "dir": "s2c",
+  "port": 30103,
+  "kind": "zstd",
+  "opcode": "0x7000de56",
+  "opcode_name": "Cmd_Rune_GetAllData_SC",
+  "envelope": "zstd",
+  "length": 478,
+  "timestamp": 1795724533361,
+  "unknown": false,
+  "probe": true,
+  "inner_length": 767
+}

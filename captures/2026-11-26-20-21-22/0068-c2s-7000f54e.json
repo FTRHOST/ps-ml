@@ -1,0 +1,12 @@
+{
+  "seq": 68,
+  "dir": "c2s",
+  "port": 30103,
+  "kind": "frame",
+  "opcode": "0x7000f54e",
+  "opcode_name": "Cmd_Role_Init_CS",
+  "envelope": "compact",
+  "length": 985,
+  "timestamp": 1795724531982,
+  "unknown": false
+}
