@@ -44,6 +44,10 @@ flush_rules() {
   cmd+='while iptables -t nat -S "$t" | grep -q mlbb-local-server; do '
   cmd+='r=$(iptables -t nat -S "$t" | grep mlbb-local-server | head -n1); '
   cmd+='r=${r#-A }; iptables -t nat -D $r; done; done; '
+  # Rule filter (hairpin ap0 -> ap0) juga ikut dibersihkan.
+  cmd+='while iptables -S | grep -q mlbb-local-server; do '
+  cmd+='r=$(iptables -S | grep mlbb-local-server | head -n1); '
+  cmd+='r=${r#-A }; iptables -D $r; done; '
   cmd+="for p in ${PORTS[*]}; do "
   cmd+='iptables -t nat -D OUTPUT -p tcp --dport $p -j REDIRECT --to-ports $p 2>/dev/null; '
   cmd+='while iptables -t nat -S OUTPUT | grep -q -- "--dport $p -j DNAT"; do '
@@ -90,6 +94,11 @@ apply_wifi_rules() {
     for p in "${PORTS[@]}"; do
       cmd+="iptables -t nat -A POSTROUTING -o ${masq_if} -p tcp -d ${host_ip} --dport ${p} -j MASQUERADE -m comment --comment ${COMMENT}; "
     done
+    # Klien hotspot lain dan PC berada di ap0 yang sama. tetherctrl_FORWARD
+    # hanya meneruskan wlan0<->ap0 lalu menjatuhkan sisanya ke DROP, jadi
+    # paket hairpin ap0->ap0 (klien -> PC) harus diterima lebih dulu.
+    cmd+="iptables -I tetherctrl_FORWARD 1 -i ${ap_if} -o ${ap_if} -d ${host_ip} -j ACCEPT -m comment --comment ${COMMENT}; "
+    cmd+="iptables -I tetherctrl_FORWARD 1 -i ${ap_if} -o ${ap_if} -s ${host_ip} -j ACCEPT -m comment --comment ${COMMENT}; "
   fi
   cmd="${cmd%; }"
   $ROOTCMD "$cmd" >/dev/null
@@ -159,6 +168,7 @@ case "${1:-}" in
     echo "== iptables nat OUTPUT =="; $ROOTCMD "iptables -t nat -L OUTPUT -n -v" || true
     echo "== iptables nat PREROUTING =="; $ROOTCMD "iptables -t nat -L PREROUTING -n -v" || true
     echo "== iptables nat POSTROUTING =="; $ROOTCMD "iptables -t nat -L POSTROUTING -n -v" || true
+    echo "== iptables tetherctrl_FORWARD =="; $ROOTCMD "iptables -L tetherctrl_FORWARD -n -v" || true
     echo "== IP PC (terdeteksi) =="; detect_host_ip || true
     ;;
   *)
