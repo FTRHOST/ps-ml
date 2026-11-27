@@ -1032,18 +1032,6 @@ function handleAuthOpcode(sock, opcode, seq, style, label, raw) {
 }
 
 function handleZoneOpcode(sock, opcode, seq, label, raw) {
-  if (
-    process.env.DEBUG_CS === "1" &&
-    [0x7000ff4e, 0x7000fb4e, 0x7000934f, 0x7000954e].includes(opcode >>> 0)
-  ) {
-    const dbgBody = extractCsBody(raw);
-    console.log(
-      `[${label}] DEBUG CS ${hex32(opcode)} body=${
-        dbgBody ? dbgBody.toString("hex") : "null"
-      }`,
-    );
-  }
-
   if (opcode === 0x7000914e) {
     // Balasan resmi berisi sSessionKey base64 68 karakter. Utamakan frame asli
     // dari capture supaya kunci sesi yang dipakai klien benar-benar valid.
@@ -1082,10 +1070,11 @@ function handleZoneOpcode(sock, opcode, seq, label, raw) {
       if (field) name = field.raw.toString("utf8");
     } catch (_) {}
     // Klien memakai sOriWord dari SC sebagai nama saat mengirim role baru.
+    // Urutan tag SC yang diterima klien: 0 = sOriWord, 1 = bHitDirty.
     // Kirim identitas lokal supaya karakter dibuat dengan nama petwir0x.
     const scBody = sdp.buildBody([
-      sdp.node.int(0, 0), // bHitDirty = false
-      sdp.node.str(10, ROLE_NAME),
+      sdp.node.str(0, ROLE_NAME),
+      sdp.node.int(1, 0), // bHitDirty = false
     ]);
     console.log(
       `[${label}] Cmd_Role_CheckNameDirty_CS -> SC (request=${name || "-"} -> ${ROLE_NAME} clean)`,
