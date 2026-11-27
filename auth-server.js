@@ -21,6 +21,16 @@ const ZONE_PORT = 30103;
 const HOST = "0.0.0.0";
 const SERVER_IP = process.env.SERVER_IP || "0.0.0.0";
 
+/**
+ *Override iAccountId (tag 0) di Cmd_Login_Auth_SC. Klien memakai field ini
+ * untuk mengisi SystemData.m_uiID; tanpa nilai valid, Preparation diblokir.
+ * Set AUTH_UID kosong untuk memakai id akun dari database.
+ */
+const AUTH_UID =
+  process.env.AUTH_UID !== undefined && process.env.AUTH_UID !== ""
+    ? BigInt(process.env.AUTH_UID)
+    : null;
+
 const CAPTURE_DIR = path.join(__dirname, "relay-captures");
 if (!fs.existsSync(CAPTURE_DIR)) {
   fs.mkdirSync(CAPTURE_DIR, { recursive: true });
@@ -56,6 +66,16 @@ function packString(tag, str) {
 function packInt(tag, val) {
   const tagBuf = writeTag(tag, 0); // Type 0: Positive Varint
   return Buffer.concat([tagBuf, writeVarUint(val)]);
+}
+
+/** Emit list SDP; elemen ditulis dengan header bertag 0. */
+function emitList(sdpParts, listTag, items, emitter) {
+  if (!items || items.length === 0) {
+    sdpParts.push(writeTag(listTag, 5), Buffer.from([0x00]));
+    return;
+  }
+  sdpParts.push(writeTag(listTag, 5), writeVarUint(items.length));
+  for (const item of items) emitter(sdpParts, item);
 }
 
 function packPacket(opcode, seq, sdpBody) {
@@ -274,8 +294,9 @@ class Cmd_Login_Auth_SC {
     const sdpParts = [];
     sdpParts.push(Buffer.from([0x70])); // StructBegin
 
-    // Tag 0: iAccountId (UInt64 -> BigInt)
-    sdpParts.push(packInt(0, this.iAccountId));
+    // Tag 0: iAccountId (UInt64 -> BigInt). AUTH_UID menimpa id DB bila
+    // di-set, supaya identitas klien sama dengan uid role yang dipakai replay.
+    sdpParts.push(packInt(0, AUTH_UID !== null ? AUTH_UID : this.iAccountId));
 
     // Tag 1: sSessionKey
     sdpParts.push(packString(1, this.sSessionKey));
@@ -880,6 +901,182 @@ const zoneServer = net.createServer((sock) => {
   sock.on("error", (err) => console.error(`[ZONE:30101] Error:`, err.message));
 });
 
+// ---------------------------------------------------------------------------
+// Room (Cmd_Room_*)
+// ---------------------------------------------------------------------------
+/** Nilai default room; env menang supaya mode VS AI bisa dipilih tanpa edit kode. */
+function roomDefaults() {
+  return {
+    pvpType: Number(
+      process.env.ROOM_PVP_TYPE !== undefined ? process.env.ROOM_PVP_TYPE : 1,
+    ),
+    pvpMode: Number(process.env.ROOM_PVP_MODE || 0),
+    mapId: Number(process.env.ROOM_MAP_ID || 1),
+    zoneId: Number(process.env.ROOM_ZONE_ID || 9218),
+    level: Number(process.env.ROOM_LEVEL || 3),
+    faceId: Number(process.env.ROOM_FACE_ID || 101),
+    nationality: Number(process.env.ROOM_NATIONALITY || 2),
+  };
+}
+
+function withRoleProfile(defaults, profile) {
+  const out = { ...defaults };
+  if (!profile) return out;
+  for (const [key, value] of Object.entries(profile)) {
+    if (value !== undefined && value !== null) out[key] = value;
+  }
+  return out;
+}
+
+/** Emit RoomPlayerInfo (tag lihat visit() di dump.cs). */
+function emitRoomPlayerInfo(sdpParts, player, structTag = 0) {
+  if (!player) return;
+  sdpParts.push(writeTag(structTag, 7)); // StructBegin
+  sdpParts.push(packInt(0, BigInt(player.uid ?? 0)));
+  if (player.svrId !== undefined) sdpParts.push(packInt(1, BigInt(player.svrId)));
+  if (player.pos !== undefined) sdpParts.push(packInt(2, BigInt(player.pos)));
+  if (player.name) sdpParts.push(packString(3, player.name));
+  if (player.level !== undefined) sdpParts.push(packInt(4, BigInt(player.level)));
+  if (player.faceId !== undefined) sdpParts.push(packInt(5, BigInt(player.faceId)));
+  if (player.nationality !== undefined)
+    sdpParts.push(packInt(6, BigInt(player.nationality)));
+  if (player.rankLevel !== undefined)
+    sdpParts.push(packInt(7, BigInt(player.rankLevel)));
+  if (player.faceBorderId !== undefined)
+    sdpParts.push(packInt(9, BigInt(player.faceBorderId)));
+  if (player.isOnline) sdpParts.push(packInt(22, 1));
+  if (player.isReady) sdpParts.push(packInt(23, 1));
+  if (player.pvpType !== undefined) sdpParts.push(packInt(34, BigInt(player.pvpType)));
+  sdpParts.push(Buffer.from([0x80])); // StructEnd
+}
+
+/** Emit RoomInfo. Urutan wajib naik: 0,1,3 (players),4,6,7. */
+function emitRoomInfo(sdpParts, info, structTag = 0) {
+  if (!info) return;
+  sdpParts.push(writeTag(structTag, 7)); // StructBegin
+  sdpParts.push(packInt(0, BigInt(info.roomId ?? 0)));
+  if (info.pvpType !== undefined) sdpParts.push(packInt(1, BigInt(info.pvpType)));
+  emitList(sdpParts, 3, info.players || [], emitRoomPlayerInfo);
+  if (info.matchVersion !== undefined)
+    sdpParts.push(packInt(4, BigInt(info.matchVersion)));
+  if (info.mapId !== undefined) sdpParts.push(packInt(6, BigInt(info.mapId)));
+  if (info.pvpMode !== undefined) sdpParts.push(packInt(7, BigInt(info.pvpMode)));
+  sdpParts.push(Buffer.from([0x80])); // StructEnd
+}
+
+/** Body Cmd_Room_Enter_SC (0x7000c157 / 0x7000c357). */
+function buildRoomEnterSCBody(opts = {}) {
+  const d = withRoleProfile(roomDefaults(), opts.profile);
+  const pvpType = opts.pvpType ?? d.pvpType;
+  const roomId = opts.roomId ?? 2;
+  const player = opts.player || {
+    uid: d.uid ?? ROLE_UID_FALLBACK,
+    svrId: d.zoneId,
+    pos: 1,
+    name: d.name || ROLE_NAME_FALLBACK,
+    level: d.level,
+    faceId: d.faceId,
+    nationality: d.nationality,
+    rankLevel: d.rankLevel,
+    faceBorderId: d.faceBorderId,
+    isOnline: true,
+    isReady: true,
+    pvpType,
+  };
+  const roomInfo = opts.roomInfo || {
+    roomId,
+    pvpType,
+    matchVersion: opts.matchVersion ?? 100,
+    mapId: opts.mapId ?? d.mapId,
+    pvpMode: opts.pvpMode ?? d.pvpMode,
+    players: [player],
+  };
+  const parts = [Buffer.from([0x70])];
+  emitRoomPlayerInfo(parts, player, 1);
+  emitRoomInfo(parts, roomInfo, 2);
+  parts.push(packInt(3, 0)); // errorCode
+  parts.push(packInt(12, BigInt(pvpType)));
+  parts.push(Buffer.from([0x80, 0x80]));
+  return Buffer.concat(parts);
+}
+
+/** Body Cmd_Room_GetInfo_SC (0x7000c957). */
+function buildRoomGetInfoSCBody(opts = {}) {
+  const d = withRoleProfile(roomDefaults(), opts.profile);
+  const pvpType = opts.pvpType ?? d.pvpType;
+  const roomId = opts.roomId ?? 2;
+  const info = {
+    roomId,
+    pvpType,
+    matchVersion: opts.matchVersion ?? 100,
+    mapId: opts.mapId ?? d.mapId,
+    pvpMode: opts.pvpMode ?? d.pvpMode,
+    players: [
+      {
+        uid: d.uid ?? ROLE_UID_FALLBACK,
+        svrId: d.zoneId,
+        pos: 1,
+        name: d.name || ROLE_NAME_FALLBACK,
+        level: d.level,
+        faceId: d.faceId,
+        nationality: d.nationality,
+        rankLevel: d.rankLevel,
+        faceBorderId: d.faceBorderId,
+        isOnline: true,
+        isReady: true,
+        pvpType,
+      },
+    ],
+  };
+  const parts = [Buffer.from([0x70])];
+  emitRoomInfo(parts, info, 0);
+  parts.push(Buffer.from([0x80, 0x80]));
+  return Buffer.concat(parts);
+}
+
+/** Ambil field penting dari body Cmd_Room_Create_CS / Cmd_Room_Enter_CS. */
+function parseRoomEnterCS(body) {
+  const out = {
+    roomId: null,
+    enterSecret: null,
+    pvpType: null,
+    mapId: null,
+    pvpMode: null,
+  };
+  if (!body || !body.length) return out;
+  let nodes;
+  try {
+    nodes = sdp.decode(body);
+  } catch (_) {
+    return out;
+  }
+  const root = nodes.find((n) => n && n.type === sdp.T.STRUCT) || null;
+  const fields = root ? root.fields : nodes;
+  const intOf = (f) =>
+    f && (f.type === sdp.T.INT || f.type === sdp.T.NEG) ? Number(f.v) : null;
+  for (const f of fields) {
+    if (!f || typeof f !== "object") continue;
+    const tag = Number(f.tag);
+    if (tag === 0) out.roomId = intOf(f);
+    if (tag === 24 && f.type === sdp.T.STRING)
+      out.enterSecret = f.raw.toString("utf8");
+    if (tag === 3 || tag === 7) out.pvpType = intOf(f);
+    if (tag === 8) out.mapId = intOf(f);
+    if (tag === 9) out.pvpMode = intOf(f);
+  }
+  if (out.pvpType === null) {
+    const tag1 = intOf(fields.find((f) => Number(f.tag) === 1));
+    const tag0 = intOf(fields.find((f) => Number(f.tag) === 0));
+    const candidate = tag1 !== null ? tag1 : tag0;
+    if (candidate !== null && candidate >= 0 && candidate < 100)
+      out.pvpType = candidate;
+  }
+  return out;
+}
+
+const ROLE_UID_FALLBACK = 332108113n;
+const ROLE_NAME_FALLBACK = "petwir0x";
+
 function startAuthServer() {
   return new Promise((resolve) => {
     authServer.listen(AUTH_PORT, HOST, () => {
@@ -923,6 +1120,10 @@ module.exports = {
   buildLoginGetBulletinSC,
   buildLoginCheckUpgradeSC,
   buildNetConnectSC,
+  buildRoomEnterSCBody,
+  buildRoomGetInfoSCBody,
+  parseRoomEnterCS,
+  AUTH_UID,
   packPacket,
 };
 

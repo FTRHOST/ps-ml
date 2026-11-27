@@ -45,6 +45,10 @@ const {
   buildLoginGetBulletinSC,
   buildLoginCheckUpgradeSC,
   buildNetConnectSC,
+  buildRoomEnterSCBody,
+  buildRoomGetInfoSCBody,
+  parseRoomEnterCS,
+  AUTH_UID,
 } = require("../auth-server");
 
 const MODE = (process.env.MODE || "replay").toLowerCase();
@@ -80,13 +84,28 @@ function loadProfile() {
   }
 }
 const PROFILE = loadProfile();
+
+/** State role lokal (gitignored); dipakai untuk identitas tambahan. */
+function loadRoleState() {
+  try {
+    return JSON.parse(
+      fs.readFileSync(path.join(__dirname, "..", "state", "role.json"), "utf8"),
+    );
+  } catch (_) {
+    return {};
+  }
+}
+const ROLE = loadRoleState();
+
 const DIAMOND = Number(
   process.env.DIAMOND !== undefined
     ? process.env.DIAMOND
-    : PROFILE.diamond || 2626,
+    : ROLE.diamond ?? PROFILE.diamond ?? 2626,
 );
 const LEVEL = Number(
-  process.env.LEVEL !== undefined ? process.env.LEVEL : PROFILE.level || 6,
+  process.env.LEVEL !== undefined
+    ? process.env.LEVEL
+    : ROLE.level ?? PROFILE.level ?? 6,
 );
 
 /**
@@ -94,15 +113,37 @@ const LEVEL = Number(
  * masih menyimpan `Fathir_Qepo`, jadi field sName/iUid harus ditimpa supaya
  * layar menampilkan identitas lokal. Bisa diganti lewat env ROLE_NAME.
  */
-const ROLE_NAME = process.env.ROLE_NAME || "petwir0x";
+const ROLE_NAME = process.env.ROLE_NAME || ROLE.name || "petwir0x";
+
 /** Uid role yang dipakai capture; uid kecil (1) dianggap role baru oleh klien. */
-const ROLE_UID = Number(process.env.ROLE_UID || 332108113);
+const ROLE_UID = Number(process.env.ROLE_UID || ROLE.uid || 332108113);
+const ROLE_FACE = Number(process.env.ROLE_FACE || ROLE.faceId || 101);
+const ROLE_NATIONALITY = Number(
+  process.env.ROLE_NATIONALITY || ROLE.nationality || 14,
+);
+const ROLE_RANK = Number(process.env.ROLE_RANK || ROLE.rankLevel || 95);
+const ROLE_BORDER = Number(process.env.ROLE_BORDER || ROLE.faceBorderId || 127);
+const ROLE_SVR_ID = Number(
+  process.env.ROLE_SVR_ID || ROLE.serverId || ROLE.zoneId || 9218,
+);
+/**
+ * Uid yang dikirim di Cmd_Login_Auth_SC. Default mengikuti ROLE_UID supaya
+ * SystemData.m_uiID klien tidak 0 (Preparation diblokir bila 0).
+ */
+const AUTH_UID_VALUE =
+  AUTH_UID !== null ? Number(AUTH_UID) : Number(process.env.ROLE_UID || ROLE_UID);
+
+/** Skin hero 18 (Layla) yang sedang dipakai; diubah oleh Cmd_Item_Set_CurSkin_CS. */
+let CURRENT_SKIN_LAYLA = 1188;
+
 /**
  * Override identitas hanya untuk paket yang dilayani lokal (replay). Mode relay
  * murni tidak mengubah byte; hybrid hanya meneruskan opcode yang TIDAK ada di
  * cache, sehingga patch di sini tidak menyentuh trafik server resmi.
  */
 const NAME_OVERRIDE = MODE === "emulate" || MODE === "hybrid";
+/** Handler emulasi tambahan hanya aktif untuk paket yang dilayani lokal. */
+const EMULATE = MODE === "emulate";
 
 /** Opcode Cmd_Role_Init_SC: field iDiamond ada di tag 11 struct CmdRoleInfo. */
 const ROLE_INIT_SC = 0x7000f64e;
@@ -532,6 +573,287 @@ function renderFrame(entry, seq, newBody) {
 }
 
 // ---------------------------------------------------------------------------
+// Helper untuk request CS dan balasan SC buatan
+// ---------------------------------------------------------------------------
+/** Ambil body SDP dari frame CS (probe maupun plain). */
+function extractCsBody(raw) {
+  if (probeTotal(raw) !== null) {
+    const inner = probeUnpack(raw);
+    const parsed = inner ? probeParseInner(inner) : null;
+    return parsed ? parsed.body : null;
+  }
+  try {
+    return sdp.parseFrame(raw).body;
+  } catch (_) {
+    return null;
+  }
+}
+
+/** Body SC tanpa field: root struct + StructEnd penutup. */
+const EMPTY_SC_BODY = Buffer.from([0x70, 0x80, 0x80]);
+
+/**
+ * Byte header antara seq dan penanda arah (0x45/0x46). Server resmi menyalin
+ * ID pesan ini dari request ke response, jadi balasan buatan wajib memakainya.
+ */
+function requestHeaderExtra(raw) {
+  if (!raw) return Buffer.alloc(0);
+  const total = probeTotal(raw);
+  if (total !== null) {
+    const inner = probeUnpack(raw);
+    const parsed = inner ? probeParseInner(inner) : null;
+    return parsed ? inner.subarray(5, parsed.headerPos) : Buffer.alloc(0);
+  }
+  if (raw.length < 9) return Buffer.alloc(0);
+  const len = raw.readUInt32BE(0);
+  for (let k = 1; k <= 3; k++) {
+    let pos = 8;
+    try {
+      for (let i = 0; i < k; i++) pos = sdp.readVarUint(raw, pos).next;
+    } catch (_) {
+      break;
+    }
+    if (pos < len && (raw[pos] === 0x45 || raw[pos] === 0x46)) {
+      let r;
+      try {
+        r = sdp.readVarUint(raw, pos + 1);
+      } catch (_) {
+        continue;
+      }
+      if (r.next + Number(r.val) + 1 === len) return raw.subarray(9, pos);
+    }
+  }
+  return Buffer.alloc(0);
+}
+
+/** Bangun frame SC plain dengan header (ID pesan) dari request. */
+function buildPlainSCFrame(opcode, seq, body, extra) {
+  const hdr = Buffer.concat([
+    Buffer.from([seq & 0xff]),
+    extra || Buffer.alloc(0),
+    Buffer.from([0x46]),
+    sdp.writeVarUint(body.length - 1),
+  ]);
+  const len = Buffer.alloc(4);
+  len.writeUInt32BE(8 + hdr.length + body.length, 0);
+  const op = Buffer.alloc(4);
+  op.writeUInt32BE(opcode >>> 0, 0);
+  return Buffer.concat([len, op, hdr, body]);
+}
+
+/** Kirim balasan SC dengan amplop/ID pesan yang sama seperti request. */
+function sendZoneReply(sock, respOpcode, seq, raw, body) {
+  const viaProbe = probeTotal(raw) !== null;
+  const extra = requestHeaderExtra(raw);
+  sock.write(
+    viaProbe
+      ? probePack(probeBuildInner(respOpcode, seq, body, extra))
+      : buildPlainSCFrame(respOpcode, seq, body, extra),
+  );
+}
+
+/** Profil role lokal untuk builder room/battle data. */
+function currentRoleProfile() {
+  return {
+    uid: BigInt(ROLE_UID),
+    svrId: ROLE_SVR_ID,
+    zoneId: ROLE_SVR_ID,
+    name: ROLE_NAME,
+    level: LEVEL,
+    faceId: ROLE_FACE,
+    nationality: ROLE_NATIONALITY,
+    rankLevel: ROLE_RANK,
+    faceBorderId: ROLE_BORDER,
+  };
+}
+
+/** Set field int pada array field SDP (disisipkan bila belum ada). */
+function setSdpInt(fields, tag, value) {
+  if (value === undefined || value === null) return;
+  const v = BigInt(value);
+  const idx = fields.findIndex(
+    (f) =>
+      f.tag === tag && (f.type === sdp.T.INT || f.type === sdp.T.NEG),
+  );
+  if (idx >= 0) {
+    fields[idx] = {
+      ...fields[idx],
+      type: v < 0n ? sdp.T.NEG : sdp.T.INT,
+      v,
+    };
+    return;
+  }
+  const at = fields.findIndex((f) => f.tag > tag);
+  fields.splice(at < 0 ? fields.length : at, 0, {
+    tag,
+    type: v < 0n ? sdp.T.NEG : sdp.T.INT,
+    v,
+  });
+}
+
+/** Set field string pada array field SDP (disisipkan bila belum ada). */
+function setSdpString(fields, tag, value) {
+  if (value === undefined || value === null) return;
+  const raw = Buffer.from(String(value), "utf8");
+  const idx = fields.findIndex((f) => f.tag === tag && f.type === sdp.T.STRING);
+  if (idx >= 0) {
+    fields[idx] = { ...fields[idx], raw };
+    return;
+  }
+  const at = fields.findIndex((f) => f.tag > tag);
+  fields.splice(at < 0 ? fields.length : at, 0, {
+    tag,
+    type: sdp.T.STRING,
+    raw,
+  });
+}
+
+/**
+ * Patch Cmd_Login_Auth_SC supaya klien tidak membuka Create Character.
+ * vSimpleRoleInfo (tag 20) dari capture punya bChangeName=1; klien memaksa
+ * ganti nama worldwide bila field ini benar.
+ */
+function patchAuthSimpleRoleInfo(bodyBuf) {
+  const nodes = sdp.decode(bodyBuf);
+  const out = nodes.map((n) => {
+    if (n.type !== sdp.T.STRUCT) return n;
+    const fields = n.fields.map((f) => ({ ...f }));
+    const roleList = fields.find(
+      (f) => f.tag === 20 && f.type === sdp.T.LIST,
+    );
+    if (roleList) {
+      const items = roleList.items.map((it) => {
+        if (it.type !== sdp.T.STRUCT) return it;
+        const fs = it.fields.map((f) => ({ ...f }));
+        setSdpInt(fs, 0, ROLE_SVR_ID);
+        setSdpInt(fs, 2, ROLE_NATIONALITY);
+        setSdpInt(fs, 3, 0); // bChangeName
+        setSdpInt(fs, 4, ROLE_NATIONALITY);
+        setSdpInt(fs, 5, LEVEL);
+        setSdpString(fs, 7, "ID");
+        return { ...it, fields: fs };
+      });
+      fields[fields.indexOf(roleList)] = { ...roleList, items };
+    }
+    setSdpString(fields, 8, ROLE_NAME);
+    return { ...n, fields };
+  });
+  return sdp.encode(out);
+}
+
+/**
+ * Patch Cmd_Hero_GetList_SC: hero 18 memakai skin lokal, hero 25 dimiliki,
+ * skin 1188/1189 ditandai dimiliki supaya bisa dipilih/dibeli lewat UI.
+ */
+function patchCmdHeroGetListBody(bodyBuf) {
+  const nodes = sdp.decode(bodyBuf);
+  const root = nodes.find((n) => n.type === sdp.T.STRUCT);
+  if (!root) throw new Error("root struct tidak ditemukan");
+
+  let heroListField = root.fields.find(
+    (f) => f.tag === 0 && f.type === sdp.T.LIST,
+  );
+  if (!heroListField) {
+    heroListField = { tag: 0, type: sdp.T.LIST, items: [] };
+    root.fields.push(heroListField);
+  }
+  const heroList = heroListField.items;
+  const findHero = (id) =>
+    heroList.find((it) => {
+      const f = it.fields && it.fields.find((x) => x.tag === 0);
+      return f && Number(f.v) === id;
+    });
+
+  const layla = findHero(18);
+  if (layla) {
+    setSdpInt(layla.fields, 1, CURRENT_SKIN_LAYLA);
+  } else {
+    heroList.push(
+      sdp.node.struct(0, [
+        sdp.node.int(0, 18),
+        sdp.node.int(1, CURRENT_SKIN_LAYLA),
+      ]),
+    );
+  }
+  if (!findHero(25)) {
+    heroList.push(
+      sdp.node.struct(0, [sdp.node.int(0, 25), sdp.node.int(1, 0)]),
+    );
+  }
+
+  let skinListField = root.fields.find(
+    (f) => f.tag === 1 && f.type === sdp.T.LIST,
+  );
+  if (!skinListField) {
+    skinListField = { tag: 1, type: sdp.T.LIST, items: [] };
+    root.fields.push(skinListField);
+  }
+  const skinList = skinListField.items;
+  for (const skinId of [1188, 1189, 102512]) {
+    const owned = skinList.some((it) => {
+      const f = it.fields && it.fields.find((x) => x.tag === 0);
+      return f && Number(f.v) === skinId;
+    });
+    if (!owned) {
+      skinList.push(
+        sdp.node.struct(0, [
+          sdp.node.int(0, skinId),
+          sdp.node.int(1, 0),
+          sdp.node.int(2, 1),
+        ]),
+      );
+    }
+  }
+  root.fields.sort((a, b) => a.tag - b.tag);
+  return sdp.encode(nodes);
+}
+
+/**
+ * Patch Cmd_Battle_GetBattleData_SC agar cache klien (key = uid) cocok dengan
+ * role lokal. Tanpa ini Preparation menggantung di "Retrieving data".
+ */
+function patchCmdBattleGetBattleDataBody(bodyBuf, info) {
+  const nodes = sdp.decode(bodyBuf);
+  const root = nodes.find((n) => n.type === sdp.T.STRUCT);
+  if (!root) throw new Error("root struct tidak ditemukan");
+  setSdpInt(root.fields, 17, info.uid);
+  setSdpInt(root.fields, 18, info.svrId);
+  const base = root.fields.find(
+    (n) => n.tag === 19 && n.type === sdp.T.STRUCT,
+  );
+  if (base) {
+    setSdpInt(base.fields, 0, info.uid);
+    setSdpInt(base.fields, 1, info.svrId);
+    setSdpString(base.fields, 2, info.name);
+    setSdpInt(base.fields, 3, info.level);
+    setSdpInt(base.fields, 4, info.faceId);
+  }
+  return sdp.encode(nodes);
+}
+
+/** Fallback Cmd_Battle_GetBattleData_SC bila cache tidak tersedia. */
+function buildCmdBattleGetBattleDataSCBody(info) {
+  const fields = [];
+  for (let tag = 0; tag <= 16; tag++) fields.push(sdp.node.int(tag, 0));
+  const uid = BigInt(info.uid ?? 0);
+  const svr = BigInt(info.svrId ?? 0);
+  fields.push(sdp.node.int(17, uid));
+  fields.push(sdp.node.int(18, svr));
+  fields.push(
+    sdp.node.struct(19, [
+      sdp.node.int(0, uid),
+      sdp.node.int(1, svr),
+      sdp.node.str(2, info.name ?? ""),
+      sdp.node.int(3, info.level ?? 0),
+      sdp.node.int(4, info.faceId ?? 101),
+    ]),
+  );
+  fields.push(sdp.node.list(21, []));
+  fields.push(sdp.node.list(22, []));
+  return sdp.buildBody(fields);
+}
+
+// ---------------------------------------------------------------------------
 // Handler
 // ---------------------------------------------------------------------------
 function handleAuthOpcode(sock, opcode, seq, style, label, raw) {
@@ -588,7 +910,7 @@ function handleAuthOpcode(sock, opcode, seq, style, label, raw) {
       } catch (_) {
         accountId = 1;
       }
-      body = patchStructField(entry.body, 0, accountId);
+      body = patchStructField(entry.body, 0, AUTH_UID_VALUE);
       if (sessionKey) {
         // Patch sSessionKey (tag 1) agar sesuai DB, seperti commit c32b3c0.
         const nodes = sdp.decode(body);
@@ -609,6 +931,10 @@ function handleAuthOpcode(sock, opcode, seq, style, label, raw) {
       // akun baru dan membuka UI Create Character. Tandai sebagai akun lama
       // agar langsung masuk lobby dengan role dari replay.
       body = patchStructField(body, 12, 0);
+      body = patchAuthSimpleRoleInfo(body);
+      console.log(
+        `[AUTH] override uid=${AUTH_UID_VALUE} bNewAccount=0 bChangeName=0 level=${LEVEL} pada Cmd_Login_Auth_SC`,
+      );
     } else if (respOpcode === 0x70000601) {
       try {
         const nodes = sdp.decode(entry.body);
@@ -725,6 +1051,175 @@ function handleZoneOpcode(sock, opcode, seq, label, raw) {
   }
 
   if (NO_REPLY.has(opcode >>> 0)) return; // fire-and-forget
+
+  // -------------------------------------------------------------------------
+  // Handler emulasi: opcode yang tidak bisa dijawab hanya dengan replay cache.
+  // Semua balasan memakai header/ID pesan dari request yang sesuai.
+  // -------------------------------------------------------------------------
+  if (EMULATE && opcode === 0x7000fa55) {
+    // Cmd_Shop_BuyItem_CS -> Cmd_Shop_BuyItem_SC (rspcode 0 = sukses).
+    const csBody = extractCsBody(raw);
+    let moneyType = 0;
+    let itemId = 0;
+    let num = 1;
+    try {
+      const nodes = csBody ? sdp.decode(csBody) : [];
+      const root = nodes.find((n) => n.type === sdp.T.STRUCT);
+      const fields = root ? root.fields : nodes;
+      const numOf = (tag) => {
+        const f = fields.find(
+          (n) => n.tag === tag && (n.type === sdp.T.INT || n.type === sdp.T.NEG),
+        );
+        return f ? Number(f.v) : undefined;
+      };
+      moneyType = numOf(0) ?? 0;
+      itemId = numOf(1) ?? 0;
+      num = numOf(2) ?? 1;
+    } catch (_) {}
+    console.log(
+      `[${label}] Cmd_Shop_BuyItem_CS -> Cmd_Shop_BuyItem_SC (money=${moneyType} item=${itemId} num=${num} OK)`,
+    );
+    sendZoneReply(sock, 0x7000fb55, seq, raw, EMPTY_SC_BODY);
+    return;
+  }
+
+  if (EMULATE && opcode === 0x7000d297) {
+    // Cmd_Item_BuySkin_CS -> Cmd_Item_BuySkin_SC (echo field request).
+    const csBody = extractCsBody(raw);
+    const fields = [];
+    try {
+      const nodes = csBody ? sdp.decode(csBody) : [];
+      const root = nodes.find((n) => n.type === sdp.T.STRUCT);
+      for (const f of (root ? root.fields : nodes) || []) {
+        if (f.type === sdp.T.INT || f.type === sdp.T.NEG) {
+          fields.push(sdp.node.int(f.tag, f.v));
+        } else if (f.type === sdp.T.STRING) {
+          fields.push(sdp.node.str(f.tag, f.raw));
+        }
+      }
+    } catch (_) {}
+    const scBody = fields.length ? sdp.buildBody(fields) : EMPTY_SC_BODY;
+    console.log(
+      `[${label}] Cmd_Item_BuySkin_CS -> Cmd_Item_BuySkin_SC (echo ${fields.length} field)`,
+    );
+    sendZoneReply(sock, 0x7000d397, seq, raw, scBody);
+    return;
+  }
+
+  if (EMULATE && opcode === 0x7000c750) {
+    // Cmd_Item_Set_CurSkin_CS -> Cmd_Item_Set_CurSkin_SC.
+    const csBody = extractCsBody(raw);
+    let heroId = 0;
+    let skinId = 0;
+    try {
+      const nodes = csBody ? sdp.decode(csBody) : [];
+      const root = nodes.find((n) => n.type === sdp.T.STRUCT);
+      const fields = root ? root.fields : nodes;
+      const hf = fields.find(
+        (f) => f.tag === 0 && (f.type === sdp.T.INT || f.type === sdp.T.NEG),
+      );
+      const sf = fields.find(
+        (f) => f.tag === 1 && (f.type === sdp.T.INT || f.type === sdp.T.NEG),
+      );
+      if (hf) heroId = Number(hf.v);
+      if (sf) skinId = Number(sf.v);
+    } catch (_) {}
+    if (heroId === 18 && skinId) CURRENT_SKIN_LAYLA = skinId;
+    const scBody = sdp.buildBody([
+      sdp.node.int(0, heroId),
+      sdp.node.int(1, skinId),
+    ]);
+    console.log(
+      `[${label}] Cmd_Item_Set_CurSkin_CS -> Cmd_Item_Set_CurSkin_SC (hero=${heroId} skin=${skinId})`,
+    );
+    sendZoneReply(sock, 0x7000c850, seq, raw, scBody);
+    return;
+  }
+
+  if (EMULATE && (opcode === 0x7000c057 || opcode === 0x7000c257)) {
+    // Start Game mengirim Cmd_Room_Enter_CS; klien hanya punya consumer untuk
+    // Cmd_Room_Enter_SC. Mode create_then_enter meniru urutan server resmi.
+    const cs = parseRoomEnterCS(extractCsBody(raw));
+    const profile = currentRoleProfile();
+    const pvpType =
+      process.env.ROOM_PVP_TYPE !== undefined
+        ? Number(process.env.ROOM_PVP_TYPE)
+        : cs.pvpType;
+    const roomMode = process.env.ROOM_REPLY_MODE || "create_then_enter";
+    if (roomMode === "empty_create" || roomMode === "create_then_enter") {
+      console.log(
+        `[${label}] ${hex32(opcode)} -> Cmd_Room_Create_SC kosong (${roomMode})`,
+      );
+      sendZoneReply(sock, 0x7000c157, seq, raw, EMPTY_SC_BODY);
+      if (roomMode === "create_then_enter") {
+        const enterBody = buildRoomEnterSCBody({
+          roomId: cs.roomId ?? 2,
+          matchVersion: 100,
+          pvpType,
+          mapId: cs.mapId,
+          pvpMode: cs.pvpMode,
+          profile,
+        });
+        setTimeout(() => {
+          if (!sock.destroyed) {
+            console.log(`[${label}] push 0x7000c357 setelah Create_SC`);
+            sendZoneReply(sock, 0x7000c357, seq, raw, enterBody);
+          }
+        }, 80);
+      }
+      return;
+    }
+    const body = buildRoomEnterSCBody({
+      roomId: cs.roomId ?? 2,
+      matchVersion: 100,
+      pvpType,
+      mapId: cs.mapId,
+      pvpMode: cs.pvpMode,
+      profile,
+    });
+    console.log(
+      `[${label}] ${hex32(opcode)} -> Cmd_Room_Enter_SC (pvp=${pvpType ?? "default"} uid=${ROLE_UID})`,
+    );
+    sendZoneReply(sock, 0x7000c357, seq, raw, body);
+    return;
+  }
+
+  if (EMULATE && opcode === 0x7000c457) {
+    console.log(`[${label}] Cmd_Room_Leave_CS -> Cmd_Room_Leave_SC`);
+    sendZoneReply(sock, 0x7000c557, seq, raw, EMPTY_SC_BODY);
+    return;
+  }
+
+  if (EMULATE && opcode === 0x7000c857) {
+    if ((process.env.ROOM_GETINFO_MODE || "empty") === "builder") {
+      const body = buildRoomGetInfoSCBody({ profile: currentRoleProfile() });
+      console.log(`[${label}] Cmd_Room_GetInfo_CS -> builder RoomInfo`);
+      sendZoneReply(sock, 0x7000c957, seq, raw, body);
+    } else {
+      console.log(`[${label}] Cmd_Room_GetInfo_CS -> kosong (tidak di room)`);
+      sendZoneReply(sock, 0x7000c957, seq, raw, EMPTY_SC_BODY);
+    }
+    return;
+  }
+
+  if (EMULATE && opcode === 0x7000d694) {
+    // Cmd_Battle_GetBattleData_CS: Preparation menunggu balasan ini.
+    const body = buildCmdBattleGetBattleDataSCBody(currentRoleProfile());
+    const entry = REPLAY_CACHE.get(hex32(0x7000d794));
+    let scBody = body;
+    if (entry) {
+      try {
+        scBody = patchCmdBattleGetBattleDataBody(entry.body, currentRoleProfile());
+      } catch (_) {
+        scBody = body;
+      }
+    }
+    console.log(
+      `[${label}] Cmd_Battle_GetBattleData_CS -> Cmd_Battle_GetBattleData_SC (uid=${ROLE_UID} svr=${ROLE_SVR_ID})`,
+    );
+    sendZoneReply(sock, 0x7000d794, seq, raw, scBody);
+    return;
+  }
 
   const respOpcode = (opcode + 0x100) >>> 0;
   let entry = REPLAY_CACHE.get(hex32(respOpcode));
@@ -851,6 +1346,31 @@ function handleZoneOpcode(sock, opcode, seq, label, raw) {
       body = sdp.encode(out);
     } catch (_) {}
     console.log(`[${label}] override iUid/sName pada Cmd_Account_GetAccount_SC`);
+  }
+  if (EMULATE && respOpcode === 0x7000a251) {
+    try {
+      body = patchCmdHeroGetListBody(body || entry.body);
+      console.log(
+        `[${label}] patch Cmd_Hero_GetList_SC: hero 18 skin=${CURRENT_SKIN_LAYLA}, hero 25 + skin 1188/1189`,
+      );
+    } catch (e) {
+      console.log(`[${label}] PATCH GAGAL Cmd_Hero_GetList_SC: ${e.message}`);
+      body = entry.body;
+    }
+  }
+  if (EMULATE && respOpcode === 0x7000d794) {
+    try {
+      body = patchCmdBattleGetBattleDataBody(
+        body || entry.body,
+        currentRoleProfile(),
+      );
+      console.log(
+        `[${label}] patch Cmd_Battle_GetBattleData_SC uid=${ROLE_UID} svr=${ROLE_SVR_ID}`,
+      );
+    } catch (e) {
+      console.log(`[${label}] PATCH GAGAL Cmd_Battle_GetBattleData_SC: ${e.message}`);
+      body = entry.body;
+    }
   }
   if (NAME_OVERRIDE) body = patchLegacyRoleName(body || entry.body, ROLE_NAME);
   sock.write(renderFrame(entry, seq, body));
@@ -1139,6 +1659,12 @@ module.exports = {
   patchTopLevelField,
   patchField,
   patchRoleInitBinary,
+  patchAuthSimpleRoleInfo,
+  patchCmdHeroGetListBody,
+  patchCmdBattleGetBattleDataBody,
+  buildCmdBattleGetBattleDataSCBody,
+  extractCsBody,
+  sendZoneReply,
   renderFrame,
   probeUnpack,
   probeParseInner,
@@ -1151,4 +1677,8 @@ module.exports = {
   ROLE_INFO_SC,
   DIAMOND,
   LEVEL,
+  ROLE_UID,
+  ROLE_NAME,
+  ROLE_SVR_ID,
+  AUTH_UID_VALUE,
 };
