@@ -166,24 +166,36 @@ const AUTH_UID_VALUE =
   AUTH_UID !== null ? Number(AUTH_UID) : Number(process.env.ROLE_UID || ROLE_UID);
 
 /**
- * Nilai iAccountId yang dikirim ke klien pada Cmd_Login_Auth_SC / GetAccount_SC.
- * Default mengikuti id akun DB. Bisa di-custom lewat env:
- *   PROFILE_ID=auth   -> id akun DB (default)
- *   PROFILE_ID=12345  -> angka bebas
+ * Nilai iAccountId / iUid yang dikirim ke klien. ID tampilan = offset + id DB,
+ * sehingga akun 1 -> 1000001, akun 2 -> 1000002, dst. ID DB tetap kecil dan
+ * dipakai untuk lookup; hanya nilai di wire yang di-offset.
  *
- * CATATAN: jangan dipakai untuk mengganti iUid/ulUid/iRoleId role. Field itu
- * adalah identitas role; menggantinya membuat panel "Profile" menganggap role
- * lokal sebagai pemain lain (data auth/role jadi miss).
+ * Env:
+ *   PROFILE_ID_OFFSET=1000000  -> offset default
+ *   PROFILE_ID=auth            -> pakai offset + id DB (default)
+ *   PROFILE_ID=12345           -> angka mutlak (semua akun sama, legacy)
  */
 const PROFILE_ID_ENV = String(process.env.PROFILE_ID || "").trim();
+const PROFILE_ID_OFFSET = Number(process.env.PROFILE_ID_OFFSET ?? 1000000);
 function profileDisplayId(accountId) {
+  const id = Number(accountId || 1);
   if (PROFILE_ID_ENV === "auth" || PROFILE_ID_ENV === "") {
-    return Number(accountId || 1);
+    return PROFILE_ID_OFFSET + id;
   }
   const custom = Number(PROFILE_ID_ENV);
-  return Number.isFinite(custom) && custom > 0
-    ? custom
-    : Number(accountId || 1);
+  return Number.isFinite(custom) && custom > 0 ? custom : PROFILE_ID_OFFSET + id;
+}
+
+/** Kebalikan profileDisplayId: ID tampilan -> id akun DB. */
+function accountIdFromDisplay(displayId) {
+  const n = Number(displayId);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  if (PROFILE_ID_ENV === "auth" || PROFILE_ID_ENV === "") {
+    const id = n - PROFILE_ID_OFFSET;
+    return Number.isInteger(id) && id > 0 ? id : null;
+  }
+  const custom = Number(PROFILE_ID_ENV);
+  return Number.isFinite(custom) && custom > 0 && n === custom ? 1 : null;
 }
 
 /**
@@ -1132,6 +1144,11 @@ function handleAuthOpcode(sock, opcode, seq, style, label, raw) {
           return { ...n, fields };
         });
         body = sdp.encode(out);
+        // sConnServer (tag 1) dan sNewConnServerList (tag 13) menentukan
+        // alamat zone yang dipakai klien setelah login.
+        console.log(
+          `[${label}] Cmd_Login_CheckUpgrade_SC sConnServer=${ZONE_ADVERTISE_IP}:${ZONE_PORTS[0]} sNewConnServerList=${ZONE_ADVERTISE_IP}:${ZONE_PORTS[0]}`,
+        );
       } catch (_) {
         body = null;
       }
@@ -1169,10 +1186,13 @@ function handleAuthOpcode(sock, opcode, seq, style, label, raw) {
       csBody = sdp.parseFrame(raw).body;
     }
     const cs = Cmd_Login_GetZone_CS.fromSdpBody(csBody);
-    const account = findAuthAccountById(cs.iAccountId);
+    // Klien mengirim balik iAccountId yang sudah di-offset (1000001, ...).
+    // Terjemahkan dulu ke id DB sebelum lookup, kalau tidak akun tidak ketemu.
+    const dbId = accountIdFromDisplay(cs.iAccountId);
+    const account = findAuthAccountById(dbId ?? cs.iAccountId);
     if (!account) {
       console.log(
-        `[${label}] akun iAccountId=${cs.iAccountId} tidak ditemukan -> zone default`,
+        `[${label}] akun iAccountId=${cs.iAccountId} (db=${dbId ?? "-"}) tidak ditemukan -> zone default`,
       );
     }
     built = buildLoginGetZoneSC(seq, account || undefined);
@@ -1490,7 +1510,12 @@ function handleZoneOpcode(sock, opcode, seq, label, raw) {
     // primary key). iUid = PK, sName = Petwir_<urutan akun>, iExp = 27446,
     // iDiamond = 100000, dan field utama lain mengikuti nilai capture asli.
     const roleInit = applyRoleInitFields(accountId);
-    const overrides = roleInit ? roleInit.values : {};
+    // DB menyimpan iUid = id DB; nilai di wire mengikuti offset profil supaya
+    // konsisten dengan iAccountId di Cmd_Login_Auth_SC.
+    const overrides = roleInit ? { ...roleInit.values } : {};
+    if (overrides[0] !== undefined) {
+      overrides[0] = BigInt(profileDisplayId(accountId));
+    }
     body = patchRoleInitBinary(body || entry.body, overrides);
     const shown = (tag) =>
       overrides[tag] === undefined ? "-" : String(overrides[tag]);
@@ -1866,12 +1891,12 @@ async function main() {
       `[SERVER] nama role fallback: ${ROLE_NAME} (diganti dari tabel role_init_fields saat login)`,
     );
     console.log(
-      `[SERVER] PROFILE_ID=${PROFILE_ID_ENV || "auth"} (default: iAccountId dari DB)`,
+      `[SERVER] PROFILE_ID=${PROFILE_ID_ENV || "auth"} OFFSET=${PROFILE_ID_OFFSET} (iAccountId tampilan = ${PROFILE_ID_OFFSET} + id DB)`,
     );
   }
   if (MODE === "emulate") {
     console.log(
-      "[SERVER] MODE=emulate -> field utama Cmd_Role_Init_SC dari tabel role_init_fields (iUid = i_account_id)",
+      "[SERVER] MODE=emulate -> field utama Cmd_Role_Init_SC dari tabel role_init_fields (iUid tampilan = offset + i_account_id)",
     );
   } else {
     console.log(
@@ -1911,6 +1936,8 @@ module.exports = {
   patchField,
   patchRoleInitBinary,
   profileDisplayId,
+  accountIdFromDisplay,
+  PROFILE_ID_OFFSET,
   patchAuthSimpleRoleInfo,
   patchFriendListBody,
   patchCmdHeroGetListBody,
