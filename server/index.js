@@ -27,6 +27,8 @@
  */
 
 const net = require("net");
+const dgram = require("dgram");
+const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 const zlib = require("zlib");
@@ -323,6 +325,10 @@ const FRIEND_LIST_SC = 0x70009057;
 const SQUAD_INFO_SC = 0x7000c4b8;
 /** Balasan 0x7000fbb8: daftar anggota squad (FriendBaseInfo + label POTM). */
 const SQUAD_MEMBER_LIST_SC = 0x7000fcb8;
+/** Balasan 0x7000d095: daftar IP server ping (Cmd_Ping_GetAllServerIp_SC). */
+const PING_SERVER_IP_SC = 0x7000d195;
+/** Balasan 0x7000f8ff: ping kota/aktivitas yang tersimpan di capture. */
+const CITY_PING_SC = 0x7000f9ff;
 /** Balasan 0x7000a457: daftar rekomendasi teman di panel Add Friends. */
 const RECOMMEND_FRIEND_SC = 0x7000a557;
 /** Jumlah maksimal rekomendasi yang dikirim (mengikuti jumlah capture asli). */
@@ -409,6 +415,28 @@ const COLDSTART_GREET = String(process.env.COLDSTART_GREET ?? "1") !== "0";
 // jadi klien tidak bisa ARP langsung ke IP PC. Pakai IP gateway/AP (mis.
 // 192.168.8.109) supaya klien mengirim lewat device lalu kena DNAT.
 const ZONE_ADVERTISE_IP = process.env.ZONE_ADVERTISE_IP || SERVER_IP;
+/**
+ * Ping lokal. `Cmd_Ping_GetAllServerIp_SC` dari capture masih berisi IP
+ * Softlayer; semua entry diganti ke alamat ini supaya klien mengirim UDP ping
+ * ke server lokal. Default mengikuti ZONE_ADVERTISE_IP agar tetap bisa
+ * dijangkau dari perangkat hotspot yang tidak bisa ARP langsung ke PC.
+ */
+const PING_LOCAL_IP =
+  process.env.PING_SERVER_IP || ZONE_ADVERTISE_IP || SERVER_IP || HOST;
+/**
+ * Port UDP yang didengarkan echo ping. Klien tidak mengirim port di
+ * `vIpList`, jadi port berasal dari konstanta native. Kita dengarkan semua
+ * port yang plausibel; bisa dipangkas lewat env PING_UDP_PORT.
+ */
+const PING_UDP_PORTS = parsePorts(
+  process.env.PING_UDP_PORT,
+  "30101,10003,30103,7000,8000,9000",
+);
+/** Nilai ping yang dilaporkan untuk target lokal (ms). */
+const PING_LOCAL_MS = Math.max(
+  1,
+  Number(process.env.PING_LOCAL_MS || 1) || 1,
+);
 
 function parseAddr(value, fallback) {
   const s = String(value || fallback);
@@ -1206,6 +1234,107 @@ function buildRecommendFriendItem(otherAccountId, template) {
 }
 
 /**
+ * Rekursif: ganti setiap IP di `ServerGroupInfo.vIpList` (tag 3) dengan alamat
+ * server lokal. Grup dan payload ping sengaja dipertahankan supaya klien
+ * tetap mengenali struktur konfigurasi.
+ */
+function patchPingIpNode(node, localIp, state) {
+  if (!node || typeof node !== "object") return node;
+  if (node.type === sdp.T.LIST) {
+    return {
+      ...node,
+      items: node.items.map((it) => patchPingIpNode(it, localIp, state)),
+    };
+  }
+  if (!node.fields) return node;
+
+  let fields = node.fields.map((f) => patchPingIpNode(f, localIp, state));
+  // ServerGroupInfo: tag 1 = sGroupName, tag 3 = vIpList.
+  const hasGroupName = fields.some(
+    (f) => f.tag === 1 && f.type === sdp.T.STRING,
+  );
+  const idx = fields.findIndex(
+    (f) => f.tag === 3 && f.type === sdp.T.LIST && Array.isArray(f.items),
+  );
+  if (hasGroupName && idx >= 0) {
+    const list = fields[idx];
+    fields[idx] = {
+      ...list,
+      items: list.items.map((it) => {
+        if (it.type !== sdp.T.STRING) return it;
+        state.count += 1;
+        return { ...it, raw: Buffer.from(localIp, "utf8") };
+      }),
+    };
+  }
+  return { ...node, fields };
+}
+
+/**
+ * Patch Cmd_Ping_GetAllServerIp_SC (0x7000d195) supaya seluruh IP ping
+ * capture diganti ke alamat lokal. `sMd5` juga dihitung ulang: nilai capture
+ * adalah hash konfigurasi lama dan bisa membuat klien memakai cache IP lama.
+ */
+function patchPingServerIpList(bodyBuf, localIp = PING_LOCAL_IP) {
+  const ip = String(localIp || SERVER_IP || HOST);
+  const state = { count: 0 };
+  const nodes = (sdp.decode(bodyBuf || Buffer.alloc(0)) || []).map((n) =>
+    patchPingIpNode(n, ip, state),
+  );
+
+  let groups = 0;
+  let md5 = "";
+  for (const n of nodes) {
+    if (n.type !== sdp.T.STRUCT) continue;
+    const list = n.fields.find((f) => f.tag === 0 && f.type === sdp.T.LIST);
+    if (!list) continue;
+    groups = list.items.filter(
+      (g) =>
+        g.type === sdp.T.STRUCT &&
+        g.fields.some((f) => f.tag === 3 && f.type === sdp.T.LIST),
+    ).length;
+    if (!groups) continue;
+    md5 = crypto.createHash("md5").update(`${ip}|${state.count}`).digest("hex");
+    setSdpString(n.fields, 1, md5);
+    break;
+  }
+  return { body: sdp.encode(nodes), count: state.count, groups, ip, md5 };
+}
+
+/**
+ * Patch Cmd_Act_CityPing_GetPing_SC (0x7000f9ff). Capture menyimpan angka
+ * statis 18 ms / 156 ms; target sekarang adalah server lokal sehingga
+ * nilainya diganti ke PING_LOCAL_MS.
+ */
+function patchCityPingBody(bodyBuf, localMs = PING_LOCAL_MS) {
+  const nodes = sdp.decode(bodyBuf || Buffer.alloc(0));
+  return {
+    body: sdp.encode(
+      nodes.map((n) => {
+        if (!n || n.type !== sdp.T.STRUCT) return n;
+        const fields = n.fields.map((f) => {
+          if (f.type !== sdp.T.LIST || !Array.isArray(f.items)) return f;
+          return {
+            ...f,
+            items: f.items.map((it) => {
+              if (!it || it.type !== sdp.T.STRUCT) return it;
+              const sub = it.fields.map((x) =>
+                x.tag === 1 && (x.type === sdp.T.INT || x.type === sdp.T.NEG)
+                  ? sdp.node.int(1, localMs)
+                  : x,
+              );
+              return { ...it, fields: sub };
+            }),
+          };
+        });
+        return { ...n, fields };
+      }),
+    ),
+    value: localMs,
+  };
+}
+
+/**
  * Patch Cmd_Friend_RecommendFriend_SC (0x7000a557) supaya `vecFriends`
  * berisi akun-akun dari `state/game.db`, bukan pemain dari capture. Akun yang
  * sedang login disingkirkan dari daftar rekomendasi.
@@ -1985,6 +2114,30 @@ function handleZoneOpcode(sock, opcode, seq, label, raw) {
       body = entry.body;
     }
   }
+  if (NAME_OVERRIDE && respOpcode === CITY_PING_SC) {
+    try {
+      const patched = patchCityPingBody(body || entry.body);
+      body = patched.body;
+      console.log(
+        `[${label}] patch Cmd_Act_CityPing_GetPing_SC -> ${patched.value}ms (lokal)`,
+      );
+    } catch (e) {
+      console.log(`[${label}] PATCH GAGAL Cmd_Act_CityPing_GetPing_SC: ${e.message}`);
+      body = entry.body;
+    }
+  }
+  if (NAME_OVERRIDE && respOpcode === PING_SERVER_IP_SC) {
+    try {
+      const patched = patchPingServerIpList(body || entry.body);
+      body = patched.body;
+      console.log(
+        `[${label}] patch Cmd_Ping_GetAllServerIp_SC -> ${patched.ip} (${patched.count} ip, ${patched.groups} grup, md5=${patched.md5})`,
+      );
+    } catch (e) {
+      console.log(`[${label}] PATCH GAGAL Cmd_Ping_GetAllServerIp_SC: ${e.message}`);
+      body = entry.body;
+    }
+  }
   if (
     NAME_OVERRIDE &&
     (respOpcode === FRIEND_LIST_SC || respOpcode === SQUAD_MEMBER_LIST_SC)
@@ -2241,6 +2394,52 @@ function makeAuthHandler(sock, label) {
 }
 
 // ---------------------------------------------------------------------------
+// Ping UDP lokal
+// ---------------------------------------------------------------------------
+let PING_UDP_LOG_COUNT = 0;
+const PING_UDP_LOG_LIMIT = 10;
+
+/**
+ * Echo datagram ping. Isi paket sengaja dikirim balik apa adanya: klien
+ * mengukur RTT dari pasangan kirim-terima dan mencocokkan payload, jadi
+ * membiarkan byte utuh adalah bentuk echo paling aman tanpa mengubah format
+ * native yang tidak terlihat di dump.cs (hanya metadata method).
+ */
+function echoPingDatagram(msg, rinfo, sock, port) {
+  const head = msg.subarray(0, Math.min(msg.length, 48)).toString("hex");
+  if (
+    PING_UDP_LOG_COUNT < PING_UDP_LOG_LIMIT ||
+    PING_UDP_LOG_COUNT % 200 === 0
+  ) {
+    console.log(
+      `[PING:UDP:${port}] ${rinfo.address}:${rinfo.port} ${msg.length}B echo hex=${head}`,
+    );
+  }
+  PING_UDP_LOG_COUNT += 1;
+  try {
+    sock.send(msg, rinfo.port, rinfo.address);
+  } catch (e) {
+    console.log(`[PING:UDP:${port}] gagal echo: ${e.message}`);
+  }
+}
+
+function listenUdpPing(port) {
+  return new Promise((resolve, reject) => {
+    const sock = dgram.createSocket("udp4");
+    sock.once("error", reject);
+    sock.on("message", (msg, rinfo) => echoPingDatagram(msg, rinfo, sock, port));
+    sock.bind(port, HOST, () => {
+      sock.removeListener("error", reject);
+      sock.on("error", (e) =>
+        console.log(`[PING:UDP:${port}] error: ${e.message}`),
+      );
+      console.log(`[PING:UDP:${port}] listener aktif (echo ping lokal)`);
+      resolve(sock);
+    });
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 function listen(port, name, handler) {
@@ -2295,6 +2494,7 @@ async function main() {
 
   for (const port of AUTH_PORTS) await listen(port, "AUTH", makeAuthHandler);
   for (const port of ZONE_PORTS) await listen(port, "ZONE", makeZoneHandler);
+  for (const port of PING_UDP_PORTS) await listenUdpPing(port);
 
   console.log("====================================================");
   console.log("   MLBB Standalone Server Aktif!");
@@ -2302,6 +2502,9 @@ async function main() {
   console.log(`   Port Zone : ${ZONE_PORTS.join(", ")}`);
   console.log(`   Server IP : ${SERVER_IP}`);
   console.log(`   Zone adv  : ${ZONE_ADVERTISE_IP}:${ZONE_PORTS[0]}`);
+  console.log(
+    `   Ping UDP  : ${PING_UDP_PORTS.join(", ")} (echo lokal, IP=${PING_LOCAL_IP})`,
+  );
   console.log(
     `   ColdStart : ${COLDSTART_GREET ? "Greeting -45 saat connect Auth + probe 0x1000" : "Handled (-45 via probe 0x1000 saja)"}`,
   );
@@ -2334,6 +2537,8 @@ module.exports = {
   patchRoleInfoBody,
   patchRoleInfoVisitors,
   patchSquadInfoBody,
+  patchPingServerIpList,
+  patchCityPingBody,
   patchRecommendFriendBody,
   patchFriendListBody,
   patchCmdHeroGetListBody,

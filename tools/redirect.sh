@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# redirect.sh — alihkan trafik TCP port game dari device ke server lokal di PC.
+# redirect.sh — alihkan trafik TCP/UDP port game dari device ke server lokal di PC.
 #
 # Kenapa memakai NAT di device (bukan mengubah paket):
 #   PRD N1 melarang relay memodifikasi byte. Kita TIDAK menyentuh payload;
@@ -11,6 +11,9 @@
 # Dua jalur yang didukung:
 #   on   : app -> iptables REDIRECT 127.0.0.1 -> adb reverse -> PC (butuh USB/adb)
 #   wifi : app -> iptables DNAT <IP-PC> -> PC lewat LAN (tanpa adb reverse)
+#
+# Port UDP ping juga ikut dialihkan di mode wifi. Mode USB/adb tidak
+# meneruskan UDP, jadi untuk ping lokal pakai mode wifi.
 #
 # Pada mode wifi, bila device sedang menjadi hotspot, aturan PREROUTING juga
 # dipasang supaya perangkat lain yang tersambung ke hotspot tersebut otomatis
@@ -32,6 +35,9 @@
 set -euo pipefail
 
 PORTS=(30021 30071 30101 10003 30103)   # Auth + Zone; beda versi klien beda port (incl. 161.202.206.34:30103)
+# Port UDP ping harus sama dengan PING_UDP_PORTS di server/index.js.
+UDP_PORTS=(30101 10003 30103 7000 8000 9000)
+ALL_PORTS=(30021 30071 30101 10003 30103 7000 8000 9000)
 COMMENT="mlbb-local-server"       # penanda aturan milik skrip ini
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOTCMD="python3 ${SCRIPT_DIR}/rootcmd.py"
@@ -48,8 +54,9 @@ flush_rules() {
   cmd+='while iptables -S | grep -q mlbb-local-server; do '
   cmd+='r=$(iptables -S | grep mlbb-local-server | head -n1); '
   cmd+='r=${r#-A }; iptables -D $r; done; '
-  cmd+="for p in ${PORTS[*]}; do "
+  cmd+="for p in ${ALL_PORTS[*]}; do "
   cmd+='iptables -t nat -D OUTPUT -p tcp --dport $p -j REDIRECT --to-ports $p 2>/dev/null; '
+  cmd+='iptables -t nat -D OUTPUT -p udp --dport $p -j REDIRECT --to-ports $p 2>/dev/null; '
   cmd+='while iptables -t nat -S OUTPUT | grep -q -- "--dport $p -j DNAT"; do '
   cmd+='r=$(iptables -t nat -S OUTPUT | grep -- "--dport $p -j DNAT" | head -n1); '
   cmd+='r=${r#-A }; iptables -t nat -D $r; done; done'
@@ -81,11 +88,17 @@ apply_wifi_rules() {
   for p in "${PORTS[@]}"; do
     cmd+="iptables -t nat -A OUTPUT -p tcp --dport ${p} -j DNAT --to-destination ${host_ip}:${p} -m comment --comment ${COMMENT}; "
   done
+  for p in "${UDP_PORTS[@]}"; do
+    cmd+="iptables -t nat -A OUTPUT -p udp --dport ${p} -j DNAT --to-destination ${host_ip}:${p} -m comment --comment ${COMMENT}; "
+  done
   if [ -n "${ap_if}" ]; then
     for p in "${PORTS[@]}"; do
       # Kecualikan trafik dari PC sendiri: kalau PC menjalankan relay ke server
       # resmi, paketnya tidak boleh dipantulkan balik oleh DNAT hotspot.
       cmd+="iptables -t nat -A PREROUTING ! -s ${host_ip} -i ${ap_if} -p tcp --dport ${p} -j DNAT --to-destination ${host_ip}:${p} -m comment --comment ${COMMENT}; "
+    done
+    for p in "${UDP_PORTS[@]}"; do
+      cmd+="iptables -t nat -A PREROUTING ! -s ${host_ip} -i ${ap_if} -p udp --dport ${p} -j DNAT --to-destination ${host_ip}:${p} -m comment --comment ${COMMENT}; "
     done
     # MASQUERADE supaya balasan PC kembali lewat device (conntrack), bukan
     # langsung ke klien. Interface keluar bisa ap0 (PC di hotspot yang sama)
@@ -93,6 +106,9 @@ apply_wifi_rules() {
     local masq_if="${route_if:-$ap_if}"
     for p in "${PORTS[@]}"; do
       cmd+="iptables -t nat -A POSTROUTING -o ${masq_if} -p tcp -d ${host_ip} --dport ${p} -j MASQUERADE -m comment --comment ${COMMENT}; "
+    done
+    for p in "${UDP_PORTS[@]}"; do
+      cmd+="iptables -t nat -A POSTROUTING -o ${masq_if} -p udp -d ${host_ip} --dport ${p} -j MASQUERADE -m comment --comment ${COMMENT}; "
     done
     # Klien hotspot lain dan PC berada di ap0 yang sama. tetherctrl_FORWARD
     # hanya meneruskan wlan0<->ap0 lalu menjatuhkan sisanya ke DROP, jadi
@@ -124,6 +140,7 @@ case "${1:-}" in
     for p in "${PORTS[@]}"; do
       echo "[+] port ${p} -> relay (adb reverse)"
     done
+    echo "[i] UDP ping tidak lewat adb reverse; pakai 'wifi' untuk echo ping lokal"
     ;;
   wifi)
     HOST_IP="${2:-}"
@@ -147,7 +164,10 @@ case "${1:-}" in
     apply_wifi_rules "${HOST_IP}" "${AP_IF}" "${ROUTE_IF}"
 
     for p in "${PORTS[@]}"; do
-      echo "[+] port ${p} -> ${HOST_IP}:${p} (LAN)"
+      echo "[+] TCP ${p} -> ${HOST_IP}:${p} (LAN)"
+    done
+    for p in "${UDP_PORTS[@]}"; do
+      echo "[+] UDP ${p} -> ${HOST_IP}:${p} (LAN, echo ping)"
     done
     if [ -n "$AP_IF" ]; then
       echo "[*] hotspot terdeteksi: ${AP_IF}; perangkat lain ikut diarahkan"
