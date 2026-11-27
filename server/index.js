@@ -46,10 +46,12 @@ const {
   createAuthAccount,
   ensureRoleInitFields,
   HERO_DATA_FIELDS,
+  getCmdHeroData,
   getHeroGetList,
   ensureHeroDataForAccount,
   setHeroCurrentSkin,
   HERO_SKIN_FIELDS,
+  getCmdHeroSkin,
   getSkinGetList,
   seedDefaultSkins,
   buildLoginGetBulletinSC,
@@ -163,6 +165,20 @@ function roleIdentity(accountId) {
     name: values[1] !== undefined ? String(values[1]) : ROLE_NAME,
     level: values[3] !== undefined ? Number(values[3]) : LEVEL,
   };
+}
+
+/**
+ * Jumlah hero/skin yang benar-benar dimiliki akun di DB. Dipakai untuk field
+ * `PlayerBaseInfo.uiHeroNum` (tag 9) dan `uiHeroSkinNum` (tag 10) pada
+ * Cmd_Role_GetInfo_SC agar profil tidak memakai angka capture lama.
+ */
+function heroSkinCounts(accountId) {
+  const id = Number(accountId || 1);
+  let heroes = getCmdHeroData(id).length;
+  let skins = getCmdHeroSkin(id).length;
+  if (!heroes) heroes = ensureHeroDataForAccount(id).length;
+  if (!skins) skins = seedDefaultSkins(id).length;
+  return { heroes, skins };
 }
 
 /** Uid role yang dipakai capture; uid kecil (1) dianggap role baru oleh klien. */
@@ -956,6 +972,36 @@ function patchAuthSimpleRoleInfo(bodyBuf, accountId) {
 }
 
 /**
+ * Patch Cmd_Role_GetInfo_SC (PlayerBaseInfo) untuk akun yang sedang dilayani:
+ * uid, server id, nama, level, dan jumlah hero/skin dari DB.
+ */
+function patchRoleInfoBody(bodyBuf, accountId) {
+  const identity = roleIdentity(accountId);
+  const counts = heroSkinCounts(accountId);
+  const aid = profileDisplayId(accountId);
+  const nodes = sdp.decode(bodyBuf || Buffer.alloc(0));
+  const out = nodes.map((n, index) => {
+    if (n.type !== sdp.T.STRUCT) return n;
+    const fields = n.fields.map((f) => {
+      if (f.tag === 0 && (f.type === sdp.T.INT || f.type === sdp.T.NEG)) {
+        return { ...f, type: sdp.T.INT, v: BigInt(aid) };
+      }
+      if (f.tag === 2 && f.type === sdp.T.STRING) {
+        return { ...f, raw: Buffer.from(identity.name, "utf8") };
+      }
+      return { ...f };
+    });
+    // Root struct adalah PlayerBaseInfo: tag 9 = uiHeroNum, tag 10 = uiHeroSkinNum.
+    if (index === 0) {
+      setSdpInt(fields, 9, counts.heroes);
+      setSdpInt(fields, 10, counts.skins);
+    }
+    return { ...n, fields };
+  });
+  return { body: sdp.encode(out), identity, counts };
+}
+
+/**
  * Patch Cmd_Hero_GetList_SC dari tabel `hero_get_list` (hasil query
  * `cmd_hero_data`). Setiap hero diatur sendiri-sendiri; field dengan nilai 0
  * dianggap belum diset dan field lama dihapus supaya DB yang berkuasa.
@@ -1576,32 +1622,20 @@ function handleZoneOpcode(sock, opcode, seq, label, raw) {
   if (NAME_OVERRIDE && respOpcode === ROLE_INFO_SC) {
     // Klien menyegarkan info role lewat opcode ini; tanpa patch, level kembali
     // ke nilai capture lama.
-    const identity = roleIdentity(zoneAccountId);
-    body = patchField(body || entry.body, LEVEL_TAG, identity.level);
-    // Patch iUid/ulUid (tag 0) dan sName (tag 2). Capture menyimpan
-    // 332108113/Fathir_Qepo; semua harus mengikuti akun socket ini agar
-    // profiling tidak memakai nama akun yang sedang login di perangkat lain.
+    let identity = {
+      name: roleIdentity(zoneAccountId).name,
+      level: roleIdentity(zoneAccountId).level,
+    };
+    let counts = { heroes: 0, skins: 0 };
     try {
-      const aid = profileDisplayId(zoneAccountId);
-      const nm = identity.name;
-      const nodes = sdp.decode(body || entry.body);
-      const out = nodes.map((n) => {
-        if (n.type !== sdp.T.STRUCT) return n;
-        const fields = n.fields.map((f) => {
-          if (f.tag === 0 && (f.type === sdp.T.INT || f.type === sdp.T.NEG)) {
-            return { ...f, type: sdp.T.INT, v: BigInt(aid) };
-          }
-          if (f.tag === 2 && f.type === sdp.T.STRING) {
-            return { ...f, raw: Buffer.from(nm, "utf8") };
-          }
-          return { ...f };
-        });
-        return { ...n, fields };
-      });
-      body = sdp.encode(out);
+      const patched = patchRoleInfoBody(body || entry.body, zoneAccountId);
+      body = patched.body;
+      identity = patched.identity;
+      counts = patched.counts;
     } catch (_) {}
+    body = patchField(body || entry.body, LEVEL_TAG, identity.level);
     console.log(
-      `[${label}] override iUid=${profileDisplayId(zoneAccountId)} sName=${identity.name} iLevel=${identity.level} pada Cmd_Role_GetInfo_SC`,
+      `[${label}] override iUid=${profileDisplayId(zoneAccountId)} sName=${identity.name} iLevel=${identity.level} heroNum=${counts.heroes} skinNum=${counts.skins} pada Cmd_Role_GetInfo_SC`,
     );
   }
   if (NAME_OVERRIDE && respOpcode === ACCOUNT_GET_SC) {
@@ -2007,6 +2041,7 @@ module.exports = {
   roleIdentity,
   PROFILE_ID_OFFSET,
   patchAuthSimpleRoleInfo,
+  patchRoleInfoBody,
   patchFriendListBody,
   patchCmdHeroGetListBody,
   patchCmdBattleGetBattleDataBody,
