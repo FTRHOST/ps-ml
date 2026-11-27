@@ -446,6 +446,16 @@ const PING_ECHO_DELAY_MS = Math.max(
   0,
   Number(process.env.PING_ECHO_DELAY_MS || 0) || 0,
 );
+/**
+ * Penundaan balasan `Cmd_Net_Echo_CS` (`0x7000954e`). Beberapa build klien
+ * memakai RTT TCP echo ini untuk angka ping lobby. Default 200 ms; set 0 untuk
+ * balas langsung/mengikuti latensi lokal.
+ */
+const PING_TCP_ECHO_DELAY_MS = Math.max(
+  0,
+  Number(process.env.PING_TCP_ECHO_DELAY_MS ?? 200) || 0,
+);
+const NET_ECHO_SC = 0x7000964e;
 
 function parseAddr(value, fallback) {
   const s = String(value || fallback);
@@ -2170,7 +2180,17 @@ function handleZoneOpcode(sock, opcode, seq, label, raw) {
       body = entry.body;
     }
   }
-  sock.write(renderFrame(entry, seq, body));
+  const replyFrame = renderFrame(entry, seq, body);
+  if (respOpcode === NET_ECHO_SC && PING_TCP_ECHO_DELAY_MS > 0) {
+    console.log(
+      `[${label}] tunda ${hex32(respOpcode)} ${PING_TCP_ECHO_DELAY_MS}ms (RTT ping lobby)`,
+    );
+    setTimeout(() => {
+      if (!sock.destroyed) sock.write(replyFrame);
+    }, PING_TCP_ECHO_DELAY_MS);
+  } else {
+    sock.write(replyFrame);
+  }
 
   // Push lanjutan (bukan balasan request +0x100). Dikirim setelah respons utama
   // supaya urutannya menyerupai server resmi.
@@ -2517,6 +2537,9 @@ async function main() {
   console.log(`   Zone adv  : ${ZONE_ADVERTISE_IP}:${ZONE_PORTS[0]}`);
   console.log(
     `   Ping UDP  : ${PING_UDP_PORTS.join(", ")} (echo lokal, IP=${PING_LOCAL_IP}, delay=${PING_ECHO_DELAY_MS}ms)`,
+  );
+  console.log(
+    `   Ping TCP  : echo ${hex32(NET_ECHO_SC)} delay=${PING_TCP_ECHO_DELAY_MS}ms`,
   );
   console.log(
     `   ColdStart : ${COLDSTART_GREET ? "Greeting -45 saat connect Auth + probe 0x1000" : "Handled (-45 via probe 0x1000 saja)"}`,
