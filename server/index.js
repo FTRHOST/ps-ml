@@ -332,6 +332,13 @@ function parsePorts(value, fallback) {
 }
 const AUTH_PORTS = parsePorts(process.env.AUTH_PORT, "30021,30071");
 const ZONE_PORTS = parsePorts(process.env.ZONE_PORT, "30101,10003,30103");
+/**
+ * Kirim -45 (Session Expired) sebagai greeting segera setelah klien connect ke
+ * port Auth protokol. Build klien saat ini tidak mengirim probe 0x1000, jadi
+ * penolakan cold-start harus diinisiasi server agar klien melakukan full login
+ * dan tidak memakai ID sesi lama yang tersimpan di cache.
+ */
+const COLDSTART_GREET = String(process.env.COLDSTART_GREET ?? "1") !== "0";
 // Alamat zone yang dikirim ke klien. Bisa beda dengan SERVER_IP bila PC dan
 // klien berada di hotspot yang sama: Android mengisolasi klien satu sama lain,
 // jadi klien tidak bisa ARP langsung ke IP PC. Pakai IP gateway/AP (mis.
@@ -1771,6 +1778,16 @@ function makeZoneHandler(sock, label) {
 function makeAuthHandler(sock, label) {
   let buf = Buffer.alloc(0);
 
+  // Port pertama Auth adalah port protokol game; port berikutnya (30071)
+  // dipakai klien untuk telemetri teks biasa dan tidak boleh dikirimi frame SDP.
+  const authPort = Number(String(label).split(":").pop());
+  if (COLDSTART_GREET && authPort === AUTH_PORTS[0]) {
+    console.log(
+      `[${label}] Cold Start greeting -> tolak -45 (Session Expired) agar klien full login`,
+    );
+    sock.write(buildColdStartReject(0x01));
+  }
+
   let upSock = null;
   let upBuf = Buffer.alloc(0);
   if (MODE === "hybrid") {
@@ -1853,7 +1870,11 @@ function makeAuthHandler(sock, label) {
 
       const len = buf.readUInt32BE(0);
       if (len < 9 || len > MAX_FRAME) {
-        // Kemungkinan laporan teks (client_loginstepdata); tidak butuh balasan.
+        // Packet yang tidak cocok format frame. Sebelumnya dibuang diam-diam,
+        // sehingga probe cold-start dari build tertentu tidak terlihat.
+        console.log(
+          `[${label}] DATA TIDAK DIKENAL (${buf.length}B, len=${len}) hex=${buf.subarray(0, Math.min(buf.length, 64)).toString("hex")}`,
+        );
         buf = Buffer.alloc(0);
         break;
       }
@@ -1866,7 +1887,14 @@ function makeAuthHandler(sock, label) {
       handleAuthOpcode(sock, opcode, seq, "plain", label, packet);
     }
   });
-  sock.on("close", () => { if (upSock && !upSock.destroyed) upSock.destroy(); });
+  sock.on("close", () => {
+    if (buf.length) {
+      console.log(
+        `[${label}] SISA DATA saat koneksi ditutup (${buf.length}B) hex=${buf.subarray(0, Math.min(buf.length, 64)).toString("hex")}`,
+      );
+    }
+    if (upSock && !upSock.destroyed) upSock.destroy();
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -1931,7 +1959,9 @@ async function main() {
   console.log(`   Port Zone : ${ZONE_PORTS.join(", ")}`);
   console.log(`   Server IP : ${SERVER_IP}`);
   console.log(`   Zone adv  : ${ZONE_ADVERTISE_IP}:${ZONE_PORTS[0]}`);
-  console.log("   ColdStart : Handled (-45 Session Expired)");
+  console.log(
+    `   ColdStart : ${COLDSTART_GREET ? "Greeting -45 saat connect Auth + probe 0x1000" : "Handled (-45 via probe 0x1000 saja)"}`,
+  );
   console.log("   CDN Mode  : Official Moonton CDN");
   console.log("====================================================");
   console.log(
