@@ -529,6 +529,108 @@ AUTH_DB.exec(
   }
 }
 
+/**
+ * Field utama Cmd_Role_Init_SC yang berasal dari capture asli (tag 0..23).
+ * `iUid` selalu mengikuti i_account_id (primary key tabel), `sName` default
+ * `Petwir_<nomor player>` berdasarkan urutan i_account_id di auth_accounts.
+ * Tag lain memakai nilai capture; sisanya (termasuk blob tag 26) tidak diubah.
+ */
+const ROLE_INIT_FIELDS = Object.freeze([
+  { name: "iUid", tag: 0, column: "i_uid", type: "int", default: null },
+  { name: "sName", tag: 1, column: "s_name", type: "string", default: null },
+  { name: "iExp", tag: 2, column: "i_exp", type: "int", default: 27446 },
+  { name: "iLevel", tag: 3, column: "i_level", type: "int", default: 89 },
+  { name: "iCoin", tag: 4, column: "i_coin", type: "int", default: 65877 },
+  { name: "iGuideStep", tag: 5, column: "i_guide_step", type: "int", default: 8 },
+  { name: "iFaceId", tag: 7, column: "i_face_id", type: "int", default: 101 },
+  { name: "iNationality", tag: 8, column: "i_nationality", type: "int", default: 14 },
+  { name: "iRoleFlag", tag: 10, column: "i_role_flag", type: "int", default: 1978 },
+  { name: "iDiamond", tag: 11, column: "i_diamond", type: "int", default: 100000 },
+  { name: "iCreateRoleTime", tag: 12, column: "i_create_role_time", type: "int", default: 1543443539 },
+  { name: "iLastLoginTime", tag: 13, column: "i_last_login_time", type: "int", default: 1795723886 },
+  { name: "iRankLevel", tag: 15, column: "i_rank_level", type: "int", default: 114 },
+  { name: "iGuideSwitchFlag", tag: 16, column: "i_guide_switch_flag", type: "int", default: 4294967295 },
+  { name: "iPVPRank", tag: 17, column: "i_pvp_rank", type: "int", default: 2855 },
+  { name: "iRankSeasonGMIsOpen", tag: 18, column: "i_rank_season_gm_is_open", type: "int", default: 1 },
+  { name: "iFaceBorderId", tag: 19, column: "i_face_border_id", type: "int", default: 127 },
+  { name: "iTotalCharge", tag: 20, column: "i_total_charge", type: "int", default: 298 },
+  { name: "iPreviousFaceUploadTime", tag: 23, column: "i_previous_face_upload_time", type: "int", default: 1735306048 },
+]);
+
+function roleInitSqlType(def) {
+  return def.type === "string" ? "TEXT" : "INTEGER";
+}
+
+AUTH_DB.exec(
+  `CREATE TABLE IF NOT EXISTS role_init_fields (
+  i_account_id INTEGER PRIMARY KEY,
+  ${ROLE_INIT_FIELDS.map(
+    (def) =>
+      `${def.column} ${roleInitSqlType(def)} NOT NULL` +
+      (def.default === null ? "" : ` DEFAULT ${def.default}`),
+  ).join(",\n  ")}
+);`,
+);
+
+// Migrasi ringan untuk database yang sudah punya tabel dengan kolom lebih lama.
+{
+  const cols = AUTH_DB.prepare("PRAGMA table_info(role_init_fields)").all();
+  for (const def of ROLE_INIT_FIELDS) {
+    if (cols.some((c) => c.name === def.column)) continue;
+    const fallback = def.default === null ? (def.type === "string" ? "''" : "0") : def.default;
+    AUTH_DB.exec(
+      `ALTER TABLE role_init_fields ADD COLUMN ${def.column} ${roleInitSqlType(def)} NOT NULL DEFAULT ${fallback};`,
+    );
+  }
+}
+
+/** Nama default berdasarkan urutan akun (i_account_id ascending). */
+function roleInitNameForAccount(accountId) {
+  const row = AUTH_DB.prepare(
+    "SELECT COUNT(*) AS player_no FROM auth_accounts WHERE i_account_id <= ?",
+  ).get(Number(accountId));
+  return `Petwir_${Number(row && row.player_no ? row.player_no : 1)}`;
+}
+
+/** Pastikan satu baris role_init_fields ada; kembalikan override untuk patcher. */
+function ensureRoleInitFields(accountId) {
+  const id = Number(accountId);
+  if (!Number.isFinite(id) || id <= 0) return null;
+  AUTH_DB.prepare(
+    "INSERT OR IGNORE INTO role_init_fields (i_account_id, i_uid, s_name) VALUES (?, ?, ?)",
+  ).run(id, id, roleInitNameForAccount(id));
+  // iUid wajib mengikuti primary key meski baris sudah ada.
+  AUTH_DB.prepare("UPDATE role_init_fields SET i_uid = ? WHERE i_account_id = ?").run(id, id);
+  const row = AUTH_DB.prepare(
+    "SELECT * FROM role_init_fields WHERE i_account_id = ?",
+  ).get(id);
+  if (!row) return null;
+  const values = {};
+  for (const def of ROLE_INIT_FIELDS) {
+    const raw = row[def.column];
+    if (raw === null || raw === undefined) continue;
+    values[def.tag] =
+      def.type === "string" ? String(raw) : BigInt(raw);
+  }
+  const playerNo = Number(String(row.s_name || "").replace(/^Petwir_/, ""));
+  return { accountId: id, playerNo: Number.isFinite(playerNo) ? playerNo : 1, values };
+}
+
+/** Isi baris untuk semua akun yang sudah ada (nomor player sesuai urutan id). */
+function seedRoleInitFieldsForAllAccounts() {
+  const rows = AUTH_DB.prepare(
+    "SELECT i_account_id FROM auth_accounts ORDER BY i_account_id ASC",
+  ).all();
+  rows.forEach((row, index) => {
+    const id = Number(row.i_account_id);
+    AUTH_DB.prepare(
+      "INSERT OR IGNORE INTO role_init_fields (i_account_id, i_uid, s_name) VALUES (?, ?, ?)",
+    ).run(id, id, `Petwir_${index + 1}`);
+    AUTH_DB.prepare("UPDATE role_init_fields SET i_uid = ? WHERE i_account_id = ?").run(id, id);
+  });
+}
+seedRoleInitFieldsForAllAccounts();
+
 /** Ubah baris database (snake_case) menjadi objek akun (camelCase). */
 function authAccountFromRow(row) {
   return {
@@ -577,6 +679,7 @@ function registerAuthAccount(account) {
     account.uiCreateAlt ?? 0,
     account.iServerTimeMS ? Number(account.iServerTimeMS) : Number(Date.now()),
   );
+  ensureRoleInitFields(Number(info.lastInsertRowid));
 }
 
 /** Cari akun dari informasi Cmd_Login_Auth_CS (nama akun -> auth key) di database. */
@@ -644,6 +747,7 @@ function createAuthAccount(cs) {
   const row = AUTH_DB.prepare(
     "SELECT * FROM auth_accounts WHERE i_account_id = ?",
   ).get(info.lastInsertRowid);
+  ensureRoleInitFields(Number(info.lastInsertRowid));
   return authAccountFromRow(row);
 }
 
@@ -1117,6 +1221,8 @@ module.exports = {
   findAuthAccountById,
   createAuthAccount,
   registerAuthAccount,
+  ROLE_INIT_FIELDS,
+  ensureRoleInitFields,
   buildLoginGetBulletinSC,
   buildLoginCheckUpgradeSC,
   buildNetConnectSC,

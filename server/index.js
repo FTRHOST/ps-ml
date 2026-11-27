@@ -42,6 +42,7 @@ const {
   findAuthAccount,
   findAuthAccountById,
   createAuthAccount,
+  ensureRoleInitFields,
   buildLoginGetBulletinSC,
   buildLoginCheckUpgradeSC,
   buildNetConnectSC,
@@ -114,6 +115,21 @@ const LEVEL = Number(
  * layar menampilkan identitas lokal. Bisa diganti lewat env ROLE_NAME.
  */
 const ROLE_NAME = process.env.ROLE_NAME || ROLE.name || "petwir0x";
+
+/**
+ * Identitas role yang aktif diambil dari tabel `role_init_fields` (DB).
+ * Nilai env/state dipakai sebagai fallback sebelum akun login.
+ */
+let ACTIVE_ROLE_NAME = ROLE_NAME;
+let ACTIVE_LEVEL = LEVEL;
+
+function applyRoleInitFields(accountId) {
+  const row = ensureRoleInitFields(accountId);
+  if (!row) return null;
+  if (row.values[1]) ACTIVE_ROLE_NAME = String(row.values[1]);
+  if (row.values[3] !== undefined) ACTIVE_LEVEL = Number(row.values[3]);
+  return row;
+}
 
 /** Uid role yang dipakai capture; uid kecil (1) dianggap role baru oleh klien. */
 const ROLE_UID = Number(process.env.ROLE_UID || ROLE.uid || 332108113);
@@ -479,23 +495,55 @@ function patchField(bodyBuf, fieldTag, value) {
     : patchTopLevelField(bodyBuf, fieldTag, value);
 }
 
+/** Tag tertinggi yang masih termasuk field utama capture (iPreviousFaceUploadTime). */
+const ROLE_INIT_MAIN_MAX_TAG = 23;
+
 /**
- * Patch biner terarah untuk Cmd_Role_Init_SC (tag 3 level, tag 11 diamond).
- * Tidak bergantung pada decode penuh; field awal yang valid cukup untuk
- * menemukan titik sisip (setelah tag 10) dan menimpa tag 3.
+ * Patch biner terarah untuk Cmd_Role_Init_SC memakai override dari tabel DB.
+ * `overrides` berbentuk { [tag]: { type: "int"|"string", value } }.
+ *
+ * Hanya field utama capture (tag 0..23) yang disentuh; tag yang tidak ada di
+ * capture (mis. iDiamond tag 11) disisipkan berurutan. Blob konfigurasi di
+ * ujung paket (tag 26 ke atas) tetap disalin byte-for-byte, karena decode ulang
+ * bagian itu memicu NullReferenceException di on_Role_Init_SC_Framing3.
+ *
+ * Signature lama (body, diamond, level, accountId, name) masih diterima.
  */
-function patchRoleInitBinary(bodyBuf, diamond, level, accountId, name) {
+function patchRoleInitBinary(bodyBuf, overrides, level, accountId, name) {
   const T = sdp.T;
+  let patch = overrides;
+  if (typeof overrides === "number" || typeof overrides === "bigint") {
+    patch = {
+      0: { type: "int", value: accountId || 0 },
+      1: { type: "string", value: name || "" },
+      3: { type: "int", value: level },
+      11: { type: "int", value: overrides },
+    };
+  }
+  if (!patch || typeof patch !== "object") patch = {};
+
+  const tags = Object.keys(patch)
+    .map(Number)
+    .filter((tag) => Number.isInteger(tag) && tag >= 0 && tag <= ROLE_INIT_MAIN_MAX_TAG)
+    .sort((a, b) => a - b);
+  const encodeOverride = (tag) => {
+    const entry = patch[tag];
+    const spec = entry && typeof entry === "object" ? entry : { value: entry };
+    if (spec.type === "string" || typeof spec.value === "string") {
+      return sdp.encodeNode({
+        tag,
+        type: T.STRING,
+        raw: Buffer.from(String(spec.value), "utf8"),
+      });
+    }
+    return sdp.encodeNode({ tag, type: T.INT, v: BigInt(spec.value) });
+  };
+
   const segments = [Buffer.from([0x70])]; // header struct
-  const patched = { 0: false, 1: false, 3: false };
-  let diamondInserted = false;
+  const applied = new Set();
   let pos = 1;
 
-  // Hanya field awal struct yang diubah. Template Role_Init menyimpan blob
-  // konfigurasi panjang di ujung paket; blob itu TIDAK boleh di-decode ulang
-  // karena mengandung tag 0/1 yang bukan field role dan akan merusak payload
-  // (menyebabkan NullReferenceException di on_Role_Init_SC_Framing3).
-  while (pos < bodyBuf.length - 1 && pos < 512) {
+  while (pos < bodyBuf.length - 1 && pos < 1024) {
     if (bodyBuf[pos] === 0x80) break; // StructEnd
     let node, nx;
     try {
@@ -503,29 +551,31 @@ function patchRoleInitBinary(bodyBuf, diamond, level, accountId, name) {
     } catch (_) {
       break;
     }
-    if (node.tag === 0 && !patched[0]) {
-      segments.push(sdp.encodeNode({ tag: 0, type: T.INT, v: BigInt(accountId || 0) }));
-      patched[0] = true;
-    } else if (node.tag === 1 && !patched[1]) {
-      segments.push(sdp.encodeNode({ tag: 1, type: T.STRING, raw: Buffer.from(name || "", "utf8") }));
-      patched[1] = true;
-    } else if (node.tag === 3 && !patched[3]) {
-      segments.push(sdp.encodeNode({ tag: 3, type: T.INT, v: BigInt(level) }));
-      patched[3] = true;
-    } else {
-      if (!diamondInserted && node.tag > 11) {
-        segments.push(sdp.encodeNode({ tag: 11, type: T.INT, v: BigInt(diamond) }));
-        diamondInserted = true;
+    if (node.tag > ROLE_INIT_MAIN_MAX_TAG) break; // masuk blob config
+
+    // Field yang belum ada di capture disisipkan sebelum tag berikutnya.
+    for (const tag of tags) {
+      if (!applied.has(tag) && tag < node.tag) {
+        segments.push(encodeOverride(tag));
+        applied.add(tag);
       }
+    }
+    if (patch[node.tag] !== undefined) {
+      segments.push(encodeOverride(node.tag));
+      applied.add(node.tag);
+    } else {
       segments.push(bodyBuf.subarray(pos, nx));
     }
     pos = nx;
   }
 
-  if (!diamondInserted) {
-    segments.push(sdp.encodeNode({ tag: 11, type: T.INT, v: BigInt(diamond) }));
+  for (const tag of tags) {
+    if (!applied.has(tag)) {
+      segments.push(encodeOverride(tag));
+      applied.add(tag);
+    }
   }
-  // Sisakan trailing byte (termasuk StructEnd dan blob config) apa adanya.
+  // Sisa byte (blob config termasuk di dalamnya) tidak diubah sama sekali.
   if (pos < bodyBuf.length) segments.push(bodyBuf.subarray(pos));
   return Buffer.concat(segments);
 }
@@ -577,7 +627,7 @@ function patchLegacyRoleName(bodyBuf, name) {
 function patchFriendListBody(bodyBuf, accountId, name) {
   if (!bodyBuf) return bodyBuf;
   const selfId = BigInt(profileDisplayId(accountId));
-  const selfName = Buffer.from(name || ROLE_NAME, "utf8");
+  const selfName = Buffer.from(name || ACTIVE_ROLE_NAME, "utf8");
   try {
     const nodes = sdp.decode(bodyBuf);
     const out = nodes.map((n) => {
@@ -719,7 +769,7 @@ function currentRoleProfile() {
     uid: BigInt(accountUid),
     svrId: ROLE_SVR_ID,
     zoneId: ROLE_SVR_ID,
-    name: ROLE_NAME,
+    name: ACTIVE_ROLE_NAME,
     level: LEVEL,
     faceId: ROLE_FACE,
     nationality: ROLE_NATIONALITY,
@@ -790,13 +840,13 @@ function patchAuthSimpleRoleInfo(bodyBuf) {
         setSdpInt(fs, 2, ROLE_NATIONALITY);
         setSdpInt(fs, 3, 0); // bChangeName
         setSdpInt(fs, 4, ROLE_NATIONALITY);
-        setSdpInt(fs, 5, LEVEL);
+        setSdpInt(fs, 5, ACTIVE_LEVEL);
         setSdpString(fs, 7, "ID");
         return { ...it, fields: fs };
       });
       fields[fields.indexOf(roleList)] = { ...roleList, items };
     }
-    setSdpString(fields, 8, ROLE_NAME);
+    setSdpString(fields, 8, ACTIVE_ROLE_NAME);
     return { ...n, fields };
   });
   return sdp.encode(out);
@@ -968,6 +1018,7 @@ function handleAuthOpcode(sock, opcode, seq, style, label, raw) {
         sessionKey = account.sSessionKey || null;
         stZone = account.stZone || null;
         CURRENT_ACCOUNT = account;
+        applyRoleInitFields(accountId);
       } catch (_) {
         accountId = 1;
       }
@@ -994,7 +1045,7 @@ function handleAuthOpcode(sock, opcode, seq, style, label, raw) {
       body = patchStructField(body, 12, 0);
       body = patchAuthSimpleRoleInfo(body);
       console.log(
-        `[AUTH] override iAccountId=${profileDisplayId(accountId)} (PROFILE_ID) bNewAccount=0 bChangeName=0 level=${LEVEL} pada Cmd_Login_Auth_SC`,
+        `[AUTH] override iAccountId=${profileDisplayId(accountId)} (PROFILE_ID) bNewAccount=0 bChangeName=0 level=${ACTIVE_LEVEL} pada Cmd_Login_Auth_SC`,
       );
     } else if (respOpcode === 0x70000601) {
       try {
@@ -1045,6 +1096,7 @@ function handleAuthOpcode(sock, opcode, seq, style, label, raw) {
     const cs = Cmd_Login_Auth_CS.fromSdpBody(csBody);
     const account = findAuthAccount(cs) || createAuthAccount(cs);
     CURRENT_ACCOUNT = account;
+    applyRoleInitFields(Number(account.iAccountId || 1));
     built = buildLoginAuthSC(seq, account);
   } else if (opcode === 0x70000301) {
     console.log(`[${label}] Cmd_Login_GetZone_CS -> Cmd_Login_GetZone_SC`);
@@ -1134,11 +1186,11 @@ function handleZoneOpcode(sock, opcode, seq, label, raw) {
     // Urutan tag SC yang diterima klien: 0 = sOriWord, 1 = bHitDirty.
     // Kirim identitas lokal supaya karakter dibuat dengan nama petwir0x.
     const scBody = sdp.buildBody([
-      sdp.node.str(0, ROLE_NAME),
+      sdp.node.str(0, ACTIVE_ROLE_NAME),
       sdp.node.int(1, 0), // bHitDirty = false
     ]);
     console.log(
-      `[${label}] Cmd_Role_CheckNameDirty_CS -> SC (request=${name || "-"} -> ${ROLE_NAME} clean)`,
+      `[${label}] Cmd_Role_CheckNameDirty_CS -> SC (request=${name || "-"} -> ${ACTIVE_ROLE_NAME} clean)`,
     );
     sendZoneReply(sock, 0x7000fc4e, seq, raw, scBody);
     return;
@@ -1366,26 +1418,29 @@ function handleZoneOpcode(sock, opcode, seq, label, raw) {
     }
     let accountId = account ? Number(account.iAccountId || 0) : 0;
     if (!accountId) accountId = 1;
-    const profileId = profileDisplayId(accountId);
-    const name = ROLE_NAME;
-    // Semua field identitas role disamakan dengan PROFILE_ID (default iAccountId
-    // dari DB). Kalau Role_Init tetap 332108113, Profile/OpenProfile "miss".
-    body = patchRoleInitBinary(body || entry.body, DIAMOND, LEVEL, profileId, name);
+    // Identitas role sepenuhnya diatur tabel role_init_fields (i_account_id =
+    // primary key). iUid = PK, sName = Petwir_<urutan akun>, iExp = 27446,
+    // iDiamond = 100000, dan field utama lain mengikuti nilai capture asli.
+    const roleInit = applyRoleInitFields(accountId);
+    const overrides = roleInit ? roleInit.values : {};
+    body = patchRoleInitBinary(body || entry.body, overrides);
+    const shown = (tag) =>
+      overrides[tag] === undefined ? "-" : String(overrides[tag]);
     console.log(
-      `[${label}] override iUid=${profileId} (PROFILE_ID) sName=${name} iDiamond=${DIAMOND} iLevel=${LEVEL} pada Cmd_Role_Init_SC`,
+      `[${label}] override Cmd_Role_Init_SC dari DB account=${accountId} player=${roleInit ? roleInit.playerNo : "-"} iUid=${shown(0)} sName=${shown(1)} iExp=${shown(2)} iDiamond=${shown(11)} iLevel=${shown(3)}`,
     );
   }
   if (NAME_OVERRIDE && respOpcode === ROLE_INFO_SC) {
     // Klien menyegarkan info role lewat opcode ini; tanpa patch, level kembali
     // ke nilai capture lama.
-    body = patchField(body || entry.body, LEVEL_TAG, LEVEL);
+    body = patchField(body || entry.body, LEVEL_TAG, ACTIVE_LEVEL);
     // Patch iUid/ulUid (tag 0) dan sName (tag 2). Capture menyimpan
     // 332108113/Fathir_Qepo; semua harus mengikuti PROFILE_ID agar profiling
     // tidak dianggap sebagai pemain lain.
     try {
       const acc = CURRENT_ACCOUNT;
       const aid = profileDisplayId(Number((acc && acc.iAccountId) || 1));
-      const nm = ROLE_NAME;
+      const nm = ACTIVE_ROLE_NAME;
       const nodes = sdp.decode(body || entry.body);
       const out = nodes.map((n) => {
         if (n.type !== sdp.T.STRUCT) return n;
@@ -1413,7 +1468,7 @@ function handleZoneOpcode(sock, opcode, seq, label, raw) {
       const acc = CURRENT_ACCOUNT;
       accountId = Number((acc && acc.iAccountId) || 1);
       const aid = profileDisplayId(accountId);
-      const nm = ROLE_NAME;
+      const nm = ACTIVE_ROLE_NAME;
       const nodes = sdp.decode(body || entry.body);
       const out = nodes.map((n) => {
         if (n.type !== sdp.T.STRUCT) return n;
@@ -1476,13 +1531,13 @@ function handleZoneOpcode(sock, opcode, seq, label, raw) {
       body = entry.body;
     }
   }
-  if (NAME_OVERRIDE) body = patchLegacyRoleName(body || entry.body, ROLE_NAME);
+  if (NAME_OVERRIDE) body = patchLegacyRoleName(body || entry.body, ACTIVE_ROLE_NAME);
   if (NAME_OVERRIDE && respOpcode === FRIEND_LIST_SC) {
     const acc = CURRENT_ACCOUNT;
     body = patchFriendListBody(
       body || entry.body,
       Number((acc && acc.iAccountId) || 1),
-      ROLE_NAME,
+      ACTIVE_ROLE_NAME,
     );
     console.log(
       `[${label}] filter self dari Cmd_Friend_GetFriendList_SC (uid=${profileDisplayId(Number((acc && acc.iAccountId) || 1))})`,
@@ -1503,7 +1558,7 @@ function handleZoneOpcode(sock, opcode, seq, label, raw) {
       setTimeout(() => {
         if (!sock.destroyed) {
           const pushBody = NAME_OVERRIDE
-            ? patchLegacyRoleName(pushEntry.body, ROLE_NAME)
+            ? patchLegacyRoleName(pushEntry.body, ACTIVE_ROLE_NAME)
             : null;
           sock.write(renderFrame(pushEntry, seq, pushBody));
         }
@@ -1732,14 +1787,16 @@ async function main() {
 
   console.log(`[SERVER] cache replay: ${REPLAY_CACHE.size} opcode`);
   if (NAME_OVERRIDE) {
-    console.log(`[SERVER] override nama role: ${ROLE_NAME}`);
+    console.log(
+      `[SERVER] nama role fallback: ${ROLE_NAME} (diganti dari tabel role_init_fields saat login)`,
+    );
     console.log(
       `[SERVER] PROFILE_ID=${PROFILE_ID_ENV || "auth"} (default: iAccountId dari DB)`,
     );
   }
   if (MODE === "emulate") {
     console.log(
-      `[SERVER] MODE=emulate -> replay + override diamond=${DIAMOND} level=${LEVEL}`,
+      "[SERVER] MODE=emulate -> field utama Cmd_Role_Init_SC dari tabel role_init_fields (iUid = i_account_id)",
     );
   } else {
     console.log(
