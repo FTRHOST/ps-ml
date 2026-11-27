@@ -41,8 +41,15 @@ const {
   Cmd_Login_GetZone_CS,
   findAuthAccount,
   findAuthAccountById,
+  getLastAccountId,
+  setLastAccountId,
   createAuthAccount,
   ensureRoleInitFields,
+  HERO_DATA_FIELDS,
+  getHeroGetList,
+  ensureHeroDataForAccount,
+  seedCmdHeroDataFromCapture,
+  setHeroCurrentSkin,
   buildLoginGetBulletinSC,
   buildLoginCheckUpgradeSC,
   buildNetConnectSC,
@@ -54,8 +61,15 @@ const {
 
 const MODE = (process.env.MODE || "replay").toLowerCase();
 
-/** Akun terakhir yang login (untuk patch Role_Init di zone). */
-let CURRENT_ACCOUNT = null;
+/**
+ * Akun terakhir yang login (untuk patch Role_Init di zone). Nilai awal diambil
+ * dari DB agar klien yang sudah terhubung sebelum server restart tidak jatuh
+ * ke account id 1.
+ */
+const LAST_ACCOUNT_ID = getLastAccountId();
+let CURRENT_ACCOUNT = LAST_ACCOUNT_ID
+  ? findAuthAccountById(LAST_ACCOUNT_ID)
+  : null;
 
 // Template auth standalone (disematkan, tidak bergantung pada captures/).
 // Sumber: capture resmi terbaru; field dinamis disesuaikan saat render.
@@ -168,6 +182,42 @@ function profileDisplayId(accountId) {
   return Number.isFinite(custom) && custom > 0
     ? custom
     : Number(accountId || 1);
+}
+
+/**
+ * Tentukan akun untuk request zone: coba baca sAccountName dari request, lalu
+ * jatuh ke akun terakhir yang login. Dipakai patcher yang butuh account id.
+ */
+function resolveRequestAccountId(raw, sock) {
+  if (sock && sock.mlAccountId) return sock.mlAccountId;
+  let account = CURRENT_ACCOUNT;
+  try {
+    let reqBody = null;
+    if (raw && raw.length > 4 && raw[0] === 0x10 && raw[1] === 0x00) {
+      const parsed = probeParseInner(probeUnpack(raw));
+      reqBody = parsed ? parsed.body : null;
+    } else if (raw && raw.length >= 9) {
+      reqBody = sdp.parseFrame(raw).body;
+    }
+    if (reqBody) {
+      const root = sdp.decode(reqBody)[0];
+      const nameField =
+        root && root.fields ? root.fields.find((f) => f.tag === 8) : null;
+      const accountName =
+        nameField && nameField.raw ? nameField.raw.toString("utf8") : "";
+      if (accountName) {
+        const found = findAuthAccount({ sAccountName: accountName, sAuthKey: "" });
+        if (found) account = found;
+      }
+    }
+  } catch (_) {
+    // biarkan fallback ke akun terakhir yang login
+  }
+  const id = account
+    ? Number(account.iAccountId || 1)
+    : Number(getLastAccountId() || 1);
+  if (sock) sock.mlAccountId = id;
+  return id;
 }
 
 /** Skin hero 18 (Layla) yang sedang dipakai; diubah oleh Cmd_Item_Set_CurSkin_CS. */
@@ -853,10 +903,11 @@ function patchAuthSimpleRoleInfo(bodyBuf) {
 }
 
 /**
- * Patch Cmd_Hero_GetList_SC: hero 18 memakai skin lokal, hero 25 dimiliki,
- * skin 1188/1189 ditandai dimiliki supaya bisa dipilih/dibeli lewat UI.
+ * Patch Cmd_Hero_GetList_SC dari tabel `hero_get_list` (hasil query
+ * `cmd_hero_data`). Setiap hero diatur sendiri-sendiri; field dengan nilai 0
+ * dianggap belum diset dan field lama dihapus supaya DB yang berkuasa.
  */
-function patchCmdHeroGetListBody(bodyBuf) {
+function patchCmdHeroGetListBody(bodyBuf, accountId) {
   const nodes = sdp.decode(bodyBuf);
   const root = nodes.find((n) => n.type === sdp.T.STRUCT);
   if (!root) throw new Error("root struct tidak ditemukan");
@@ -875,21 +926,23 @@ function patchCmdHeroGetListBody(bodyBuf) {
       return f && Number(f.v) === id;
     });
 
-  const layla = findHero(18);
-  if (layla) {
-    setSdpInt(layla.fields, 1, CURRENT_SKIN_LAYLA);
-  } else {
-    heroList.push(
-      sdp.node.struct(0, [
-        sdp.node.int(0, 18),
-        sdp.node.int(1, CURRENT_SKIN_LAYLA),
-      ]),
-    );
-  }
-  if (!findHero(25)) {
-    heroList.push(
-      sdp.node.struct(0, [sdp.node.int(0, 25), sdp.node.int(1, 0)]),
-    );
+  const owned = getHeroGetList(accountId);
+  for (const row of owned) {
+    let hero = findHero(row.iHeroId);
+    if (!hero) {
+      hero = sdp.node.struct(0, [sdp.node.int(0, row.iHeroId)]);
+      heroList.push(hero);
+    }
+    for (const def of HERO_DATA_FIELDS.slice(1)) {
+      const value = Number(row[def.name] || 0);
+      const idx = hero.fields.findIndex((f) => f.tag === def.tag);
+      if (value > 0) {
+        setSdpInt(hero.fields, def.tag, value);
+      } else if (idx >= 0) {
+        hero.fields.splice(idx, 1); // default 0 = belum diset
+      }
+    }
+    hero.fields.sort((a, b) => a.tag - b.tag);
   }
 
   let skinListField = root.fields.find(
@@ -1018,6 +1071,7 @@ function handleAuthOpcode(sock, opcode, seq, style, label, raw) {
         sessionKey = account.sSessionKey || null;
         stZone = account.stZone || null;
         CURRENT_ACCOUNT = account;
+        setLastAccountId(accountId);
         applyRoleInitFields(accountId);
       } catch (_) {
         accountId = 1;
@@ -1096,6 +1150,7 @@ function handleAuthOpcode(sock, opcode, seq, style, label, raw) {
     const cs = Cmd_Login_Auth_CS.fromSdpBody(csBody);
     const account = findAuthAccount(cs) || createAuthAccount(cs);
     CURRENT_ACCOUNT = account;
+    setLastAccountId(Number(account.iAccountId || 1));
     applyRoleInitFields(Number(account.iAccountId || 1));
     built = buildLoginAuthSC(seq, account);
   } else if (opcode === 0x70000301) {
@@ -1264,7 +1319,11 @@ function handleZoneOpcode(sock, opcode, seq, label, raw) {
       if (hf) heroId = Number(hf.v);
       if (sf) skinId = Number(sf.v);
     } catch (_) {}
-    if (heroId === 18 && skinId) CURRENT_SKIN_LAYLA = skinId;
+    if (heroId) {
+      const accId = resolveRequestAccountId(raw, sock);
+      setHeroCurrentSkin(accId, heroId, skinId);
+      if (heroId === 18 && skinId) CURRENT_SKIN_LAYLA = skinId;
+    }
     const scBody = sdp.buildBody([
       sdp.node.int(0, heroId),
       sdp.node.int(1, skinId),
@@ -1417,7 +1476,9 @@ function handleZoneOpcode(sock, opcode, seq, label, raw) {
       // biarkan fallback ke CURRENT_ACCOUNT
     }
     let accountId = account ? Number(account.iAccountId || 0) : 0;
-    if (!accountId) accountId = 1;
+    if (!accountId) accountId = resolveRequestAccountId(raw, sock);
+    sock.mlAccountId = accountId; // binding akun untuk seluruh request di socket ini
+    setLastAccountId(accountId);
     // Identitas role sepenuhnya diatur tabel role_init_fields (i_account_id =
     // primary key). iUid = PK, sName = Petwir_<urutan akun>, iExp = 27446,
     // iDiamond = 100000, dan field utama lain mengikuti nilai capture asli.
@@ -1508,9 +1569,12 @@ function handleZoneOpcode(sock, opcode, seq, label, raw) {
   }
   if (EMULATE && respOpcode === 0x7000a251) {
     try {
-      body = patchCmdHeroGetListBody(body || entry.body);
+      const heroAccountId = resolveRequestAccountId(raw, sock);
+      const owned = ensureHeroDataForAccount(heroAccountId);
+      body = patchCmdHeroGetListBody(body || entry.body, heroAccountId);
+      const layla = owned.find((r) => r.iHeroId === 18);
       console.log(
-        `[${label}] patch Cmd_Hero_GetList_SC: hero 18 skin=${CURRENT_SKIN_LAYLA}, hero 25 + skin 1188/1189`,
+        `[${label}] patch Cmd_Hero_GetList_SC dari DB account=${heroAccountId} heroes=${owned.length} hero18.skin=${layla ? layla.iCurrentSkin : 0} + skin 1188/1189`,
       );
     } catch (e) {
       console.log(`[${label}] PATCH GAGAL Cmd_Hero_GetList_SC: ${e.message}`);
@@ -1786,6 +1850,9 @@ async function main() {
   }
 
   console.log(`[SERVER] cache replay: ${REPLAY_CACHE.size} opcode`);
+  console.log(
+    `[SERVER] akun aktif terakhir dari DB: ${LAST_ACCOUNT_ID || "-"} (binding socket zone)`,
+  );
   if (NAME_OVERRIDE) {
     console.log(
       `[SERVER] nama role fallback: ${ROLE_NAME} (diganti dari tabel role_init_fields saat login)`,
@@ -1802,6 +1869,40 @@ async function main() {
     console.log(
       "[SERVER] MODE=replay -> replay dari capture lokal (tanpa override diamond/level)",
     );
+  }
+
+  if (MODE === "emulate") {
+    try {
+      const entry = REPLAY_CACHE.get("0x7000a251");
+      if (entry) {
+        const root = sdp.decode(entry.body).find(
+          (n) => n.type === sdp.T.STRUCT,
+        );
+        const list =
+          root &&
+          root.fields.find(
+            (f) => f.tag === 0 && f.type === sdp.T.LIST,
+          );
+        const heroes = ((list && list.items) || [])
+          .map((it) => {
+            const row = {};
+            for (const f of (it && it.fields) || []) {
+              if (Number.isInteger(f.tag) && f.tag >= 0 && f.tag <= 7) {
+                row[f.tag] = Number(f.v || 0);
+              }
+            }
+            return row;
+          })
+          .filter((r) => Number(r[0]) > 0);
+        const result = seedCmdHeroDataFromCapture(1000000, heroes);
+        const layla = result.find((r) => r.iHeroId === 18);
+        console.log(
+          `[SERVER] seed cmd_hero_data akun 1000000: ${heroes.length} hero dari capture, hero_get_list=${result.length} (hero18.skin=${layla ? layla.iCurrentSkin : 0})`,
+        );
+      }
+    } catch (e) {
+      console.log(`[SERVER] GAGAL seed cmd_hero_data: ${e.message}`);
+    }
   }
 
   for (const port of AUTH_PORTS) await listen(port, "AUTH", makeAuthHandler);

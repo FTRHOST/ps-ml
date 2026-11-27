@@ -519,6 +519,34 @@ AUTH_DB.exec(
   "CREATE INDEX IF NOT EXISTS idx_auth_accounts_auth_key ON auth_accounts (LOWER(s_auth_key));",
 );
 
+/**
+ * State ringan yang tetap ada setelah server restart. Dipakai supaya request
+ * zone dari klien yang sudah terhubung (tanpa login ulang) tetap dibinding ke
+ * akun yang terakhir login, bukan jatuh ke id 1.
+ */
+AUTH_DB.exec(
+  "CREATE TABLE IF NOT EXISTS server_state (s_key TEXT PRIMARY KEY, s_value TEXT NOT NULL);",
+);
+function getServerState(key) {
+  const row = AUTH_DB.prepare(
+    "SELECT s_value FROM server_state WHERE s_key = ?",
+  ).get(String(key));
+  return row ? row.s_value : null;
+}
+function setServerState(key, value) {
+  AUTH_DB.prepare(
+    `INSERT INTO server_state (s_key, s_value) VALUES (?, ?)
+     ON CONFLICT(s_key) DO UPDATE SET s_value = excluded.s_value`,
+  ).run(String(key), String(value));
+}
+function getLastAccountId() {
+  const id = Number(getServerState("last_account_id"));
+  return Number.isFinite(id) && id > 0 ? id : null;
+}
+function setLastAccountId(accountId) {
+  setServerState("last_account_id", String(accountId));
+}
+
 // Migrasi ringan: pastikan kolom i_region_id ada pada database lama.
 {
   const cols = AUTH_DB.prepare("PRAGMA table_info(auth_accounts)").all();
@@ -630,6 +658,179 @@ function seedRoleInitFieldsForAllAccounts() {
   });
 }
 seedRoleInitFieldsForAllAccounts();
+
+/**
+ * CmdHeroData (dump.cs): satu baris per hero yang dimiliki sebuah akun.
+ * `iHeroId` adalah kunci bersama i_account_id. Field lain default 0 yang
+ * berarti "belum diset" (tidak dikirim ke klien).
+ */
+const HERO_DATA_FIELDS = Object.freeze([
+  { name: "iHeroId", tag: 0, column: "i_hero_id", default: null },
+  { name: "iCurrentSkin", tag: 1, column: "i_current_skin", default: 0 },
+  { name: "iLimitTime", tag: 2, column: "i_limit_time", default: 0 },
+  { name: "iSkinSource", tag: 3, column: "i_skin_source", default: 0 },
+  { name: "iCurrentStatue", tag: 4, column: "i_current_statue", default: 0 },
+  { name: "iStatueSource", tag: 5, column: "i_statue_source", default: 0 },
+  { name: "iFightPowerLvl", tag: 6, column: "i_fight_power_lvl", default: 0 },
+  { name: "iFightPowerValue", tag: 7, column: "i_fight_power_value", default: 0 },
+]);
+const HERO_DATA_COLUMNS = HERO_DATA_FIELDS.map((d) => d.column).join(", ");
+const HERO_DATA_PLACEHOLDERS = HERO_DATA_FIELDS.map(() => "?").join(", ");
+const HERO_DATA_UPDATE_SET = HERO_DATA_FIELDS.slice(1)
+  .map((d) => `${d.column} = excluded.${d.column}`)
+  .join(", ");
+
+function heroDataColumnSql(def) {
+  return (
+    `${def.column} INTEGER NOT NULL` +
+    (def.default === null ? "" : ` DEFAULT ${def.default}`)
+  );
+}
+
+for (const table of ["cmd_hero_data", "hero_get_list"]) {
+  AUTH_DB.exec(
+    `CREATE TABLE IF NOT EXISTS ${table} (
+  i_account_id INTEGER NOT NULL,
+  ${HERO_DATA_FIELDS.map(heroDataColumnSql).join(",\n  ")},
+  PRIMARY KEY (i_account_id, i_hero_id)
+);`,
+  );
+  const cols = AUTH_DB.prepare(`PRAGMA table_info(${table})`).all();
+  for (const def of HERO_DATA_FIELDS) {
+    if (cols.some((c) => c.name === def.column)) continue;
+    AUTH_DB.exec(
+      `ALTER TABLE ${table} ADD COLUMN ${def.column} INTEGER NOT NULL DEFAULT ${def.default === null ? 0 : def.default};`,
+    );
+  }
+}
+
+/** Baris DB -> objek CmdHeroData (nama field dump.cs). */
+function heroDataFromRow(row) {
+  const out = { iHeroId: Number(row.i_hero_id) };
+  for (const def of HERO_DATA_FIELDS.slice(1)) {
+    out[def.name] = Number(row[def.column] || 0);
+  }
+  return out;
+}
+
+/** Ambil semua CmdHeroData milik akun (tabel sumber). */
+function getCmdHeroData(accountId) {
+  const id = Number(accountId);
+  if (!Number.isFinite(id) || id <= 0) return [];
+  return AUTH_DB.prepare(
+    `SELECT * FROM cmd_hero_data WHERE i_account_id = ? ORDER BY i_hero_id ASC`,
+  )
+    .all(id)
+    .map(heroDataFromRow);
+}
+
+/** Ambil hasil GetList (tabel turunan dari cmd_hero_data). */
+function getHeroGetList(accountId) {
+  const id = Number(accountId);
+  if (!Number.isFinite(id) || id <= 0) return [];
+  return AUTH_DB.prepare(
+    `SELECT * FROM hero_get_list WHERE i_account_id = ? ORDER BY i_hero_id ASC`,
+  )
+    .all(id)
+    .map(heroDataFromRow);
+}
+
+/** Simpan/perbarui CmdHeroData per akun + hero. Field yang tidak diberi = 0. */
+function upsertCmdHeroData(accountId, rows) {
+  const id = Number(accountId);
+  if (!Number.isFinite(id) || id <= 0 || !Array.isArray(rows)) return 0;
+  const stmt = AUTH_DB.prepare(
+    `INSERT INTO cmd_hero_data (i_account_id, ${HERO_DATA_COLUMNS})
+     VALUES (?, ${HERO_DATA_PLACEHOLDERS})
+     ON CONFLICT(i_account_id, i_hero_id) DO UPDATE SET ${HERO_DATA_UPDATE_SET}`,
+  );
+  let count = 0;
+  for (const input of rows) {
+    const heroId = Number(
+      input.iHeroId !== undefined ? input.iHeroId : input[0],
+    );
+    if (!Number.isInteger(heroId) || heroId <= 0) continue;
+    const values = HERO_DATA_FIELDS.map((def) => {
+      const raw =
+        input[def.name] !== undefined
+          ? input[def.name]
+          : input[def.tag] !== undefined
+            ? input[def.tag]
+            : def.default ?? 0;
+      return Number(raw) || 0;
+    });
+    stmt.run(id, ...values);
+    count++;
+  }
+  return count;
+}
+
+/** Bangun ulang tabel hero_get_list dari cmd_hero_data untuk satu akun. */
+function refreshHeroGetList(accountId) {
+  const id = Number(accountId);
+  if (!Number.isFinite(id) || id <= 0) return [];
+  AUTH_DB.prepare("DELETE FROM hero_get_list WHERE i_account_id = ?").run(id);
+  AUTH_DB.prepare(
+    `INSERT INTO hero_get_list (i_account_id, ${HERO_DATA_COLUMNS})
+     SELECT ?, ${HERO_DATA_COLUMNS} FROM cmd_hero_data
+     WHERE i_account_id = ? ORDER BY i_hero_id ASC`,
+  ).run(id, id);
+  return getHeroGetList(id);
+}
+
+/** Pastikan akun punya data hero minimal bila belum pernah di-seed. */
+function ensureHeroDataForAccount(accountId) {
+  const id = Number(accountId);
+  if (!Number.isFinite(id) || id <= 0) return [];
+  if (getCmdHeroData(id).length === 0) {
+    upsertCmdHeroData(id, [
+      { iHeroId: 18, iCurrentSkin: 1188 },
+      { iHeroId: 25, iCurrentSkin: 0 },
+    ]);
+  }
+  return refreshHeroGetList(id);
+}
+
+/**
+ * Isi cmd_hero_data akun 1000000 dari Cmd_Hero_GetList_SC capture. Nilai yang
+ * tertangkap dipakai apa adanya; skin hero 18 diset 1188 sesuai permintaan.
+ */
+function seedCmdHeroDataFromCapture(accountId, heroes) {
+  const id = Number(accountId);
+  if (!Number.isFinite(id) || id <= 0) return [];
+  // Hanya isi hero yang belum ada. Baris lama (termasuk skin hasil "Use")
+  // tidak pernah ditimpa capture saat server restart.
+  const existing = getCmdHeroData(id);
+  const existingIds = new Set(existing.map((r) => r.iHeroId));
+  const missing = (heroes || []).filter(
+    (h) => !existingIds.has(Number(h[0])),
+  );
+  upsertCmdHeroData(id, missing);
+  const layla = getCmdHeroData(id).find((r) => r.iHeroId === 18);
+  if (!existingIds.has(18) || !layla || !layla.iCurrentSkin) {
+    upsertCmdHeroData(id, [
+      { ...(layla || { iHeroId: 18 }), iCurrentSkin: 1188 },
+    ]);
+  }
+  if (!existingIds.has(25)) {
+    upsertCmdHeroData(id, [{ iHeroId: 25, iCurrentSkin: 0 }]);
+  }
+  return refreshHeroGetList(id);
+}
+
+/** Update skin yang sedang dipakai, disimpan ke tabel sumber + GetList. */
+function setHeroCurrentSkin(accountId, heroId, skinId) {
+  const id = Number(accountId);
+  const hero = Number(heroId);
+  const skin = Number(skinId);
+  if (!Number.isFinite(id) || id <= 0 || !Number.isInteger(hero) || hero <= 0) {
+    return [];
+  }
+  const existing =
+    getCmdHeroData(id).find((r) => r.iHeroId === hero) || { iHeroId: hero };
+  upsertCmdHeroData(id, [{ ...existing, iCurrentSkin: skin || 0 }]);
+  return refreshHeroGetList(id);
+}
 
 /** Ubah baris database (snake_case) menjadi objek akun (camelCase). */
 function authAccountFromRow(row) {
@@ -1219,10 +1420,20 @@ module.exports = {
   Cmd_Login_GetZone_SC,
   findAuthAccount,
   findAuthAccountById,
+  getLastAccountId,
+  setLastAccountId,
   createAuthAccount,
   registerAuthAccount,
   ROLE_INIT_FIELDS,
   ensureRoleInitFields,
+  HERO_DATA_FIELDS,
+  getCmdHeroData,
+  getHeroGetList,
+  upsertCmdHeroData,
+  refreshHeroGetList,
+  ensureHeroDataForAccount,
+  seedCmdHeroDataFromCapture,
+  setHeroCurrentSkin,
   buildLoginGetBulletinSC,
   buildLoginCheckUpgradeSC,
   buildNetConnectSC,
