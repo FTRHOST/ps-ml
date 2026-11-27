@@ -236,6 +236,7 @@ node tools/build-schema.js
 | HP non-root di WiFi rumah tidak masuk server lokal | tidak ada iptables/router DNAT | sambungkan HP ke hotspot HP root, atau pasang port forwarding di router |
 | PC ikut hotspot, klien tidak bisa masuk | target DNAT berada di subnet hotspot (client-to-client) | pindahkan PC ke WiFi upstream, pakai IP PC di WiFi rumah |
 | Game stuck di zone setelah auth | `SERVER_IP` bukan IP PC di WiFi upstream | restart server dengan `SERVER_IP=<IP-PC-WiFi-rumah>` |
+| Auth sukses tapi klien hotspot tidak pernah connect ke zone | `sConnServer` mengiklankan IP PC, yang diblokir isolasi client-to-client hotspot | restart dengan `ZONE_ADVERTISE_IP=<IP-AP/gateway>` (mis. `192.168.82.55`) |
 | IP PC berubah setelah reconnect | DHCP hotspot memberi alamat baru | jalankan ulang `./tools/redirect.sh wifi` |
 | Relay hanya melihat auth | port zone klien berbeda | pastikan `ZONE_PORT=30101,10003` |
 | `frida.ServerNotRunningError` | `adb forward tcp:2626` belum ada | `adb forward tcp:2626 tcp:2626` |

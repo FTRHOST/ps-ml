@@ -70,12 +70,24 @@ tidak reliabel: Android policy routing bisa mengirim paket lewat `wlan0`
 (default upstream), dan kalaupun route `ap0` ditambahkan, koneksi zone menjadi
 client-to-client yang diblokir oleh hotspot Android.
 
-### 2.4 `SERVER_IP` harus sama dengan IP PC di WiFi rumah
+### 2.4 `SERVER_IP` dan `ZONE_ADVERTISE_IP`
 
-Auth server mengirim `sConnServer` ke game. Nilai itu diambil dari `SERVER_IP`.
-Kalau diisi `192.168.18.163`, koneksi zone juga akan melewati HP root → WiFi
-rumah → PC. Kalau diisi IP lain (mis. IP hotspot PC), game akan mencoba konek
-langsung ke IP yang tidak bisa dijangkau dari klien hotspot.
+Auth server mengirim `sConnServer` ke game. Nilai itu diambil dari
+`ZONE_ADVERTISE_IP` (default: `SERVER_IP`). Kalau `SERVER_IP=192.168.18.163`
+(IP PC di WiFi rumah), koneksi zone akan melewati HP root → WiFi rumah → PC.
+
+Saat PC ikut tersambung ke hotspot HP root, klien hotspot **tidak bisa**
+meng-ARP langsung IP PC (isolasi client-to-client), sehingga auth berhasil tetapi
+koneksi zone tidak pernah dibuka. Dalam topologi itu, iklankan IP AP/gateway
+supaya paket masuk ke HP root lalu kena DNAT:
+
+```bash
+SERVER_IP=192.168.82.209 ZONE_ADVERTISE_IP=192.168.82.55 MODE=emulate \
+  node server/index.js
+```
+
+Tanda berhasil di log: `sConnServer=192.168.82.55:30101` diikuti baris
+`[ZONE:30101] klien terhubung` dan `override Cmd_Role_Init_SC ... account=2`.
 
 ## 3. Prasyarat
 
