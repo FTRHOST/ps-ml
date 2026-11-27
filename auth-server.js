@@ -491,11 +491,12 @@ const DEFAULT_LOGIN_AUTH_ACCOUNT = {
 };
 
 /**
- * Database relasional untuk akun auth (SQLite via built-in `node:sqlite`,
- * tanpa dependensi npm baru). File: state/auth.db (diremote git, bukan bagian repo).
+ * Database relasional server (SQLite via built-in `node:sqlite`, tanpa
+ * dependensi npm baru). Menyimpan akun, field role, kepemilikan hero/skin, dan
+ * state server. File: state/game.db (diremote git, bukan bagian repo).
  * Setiap akun baru otomatis mendapat iAccountId berbeda (AUTOINCREMENT).
  */
-const AUTH_DB_PATH = path.join(__dirname, "state", "auth.db");
+const AUTH_DB_PATH = path.join(__dirname, "state", "game.db");
 const AUTH_DB = new DatabaseSync(AUTH_DB_PATH);
 AUTH_DB.exec(`CREATE TABLE IF NOT EXISTS auth_accounts (
   i_account_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -778,42 +779,17 @@ function refreshHeroGetList(accountId) {
   return getHeroGetList(id);
 }
 
+/** Hero default untuk akun baru: 1 sampai 10, semua field = 0 (belum diset). */
+const DEFAULT_OWNED_HEROES = Object.freeze(
+  Array.from({ length: 10 }, (_, i) => ({ iHeroId: i + 1 })),
+);
+
 /** Pastikan akun punya data hero minimal bila belum pernah di-seed. */
 function ensureHeroDataForAccount(accountId) {
   const id = Number(accountId);
   if (!Number.isFinite(id) || id <= 0) return [];
   if (getCmdHeroData(id).length === 0) {
-    upsertCmdHeroData(id, [
-      { iHeroId: 18, iCurrentSkin: 1188 },
-      { iHeroId: 25, iCurrentSkin: 0 },
-    ]);
-  }
-  return refreshHeroGetList(id);
-}
-
-/**
- * Isi cmd_hero_data akun 1000000 dari Cmd_Hero_GetList_SC capture. Nilai yang
- * tertangkap dipakai apa adanya; skin hero 18 diset 1188 sesuai permintaan.
- */
-function seedCmdHeroDataFromCapture(accountId, heroes) {
-  const id = Number(accountId);
-  if (!Number.isFinite(id) || id <= 0) return [];
-  // Hanya isi hero yang belum ada. Baris lama (termasuk skin hasil "Use")
-  // tidak pernah ditimpa capture saat server restart.
-  const existing = getCmdHeroData(id);
-  const existingIds = new Set(existing.map((r) => r.iHeroId));
-  const missing = (heroes || []).filter(
-    (h) => !existingIds.has(Number(h[0])),
-  );
-  upsertCmdHeroData(id, missing);
-  const layla = getCmdHeroData(id).find((r) => r.iHeroId === 18);
-  if (!existingIds.has(18) || !layla || !layla.iCurrentSkin) {
-    upsertCmdHeroData(id, [
-      { ...(layla || { iHeroId: 18 }), iCurrentSkin: 1188 },
-    ]);
-  }
-  if (!existingIds.has(25)) {
-    upsertCmdHeroData(id, [{ iHeroId: 25, iCurrentSkin: 0 }]);
+    upsertCmdHeroData(id, DEFAULT_OWNED_HEROES);
   }
   return refreshHeroGetList(id);
 }
@@ -829,7 +805,163 @@ function setHeroCurrentSkin(accountId, heroId, skinId) {
   const existing =
     getCmdHeroData(id).find((r) => r.iHeroId === hero) || { iHeroId: hero };
   upsertCmdHeroData(id, [{ ...existing, iCurrentSkin: skin || 0 }]);
+  // Skin yang dipakai otomatis menjadi milik akun, supaya vSkinList selalu
+  // memuat skin yang sedang dipakai hero.
+  if (skin > 0 && !getCmdHeroSkin(id).some((r) => r.iId === skin)) {
+    upsertCmdHeroSkin(id, [{ iId: skin, iSource: 1 }]);
+    refreshSkinGetList(id);
+  }
   return refreshHeroGetList(id);
+}
+
+/**
+ * CmdHeroSkin (dump.cs): satu baris per skin yang dimiliki akun.
+ * Tag SDP mengikuti urutan field: 0=iId, 1=iLimitTime, 2=iSource,
+ * 3=iLimitTimeMagicChess, 4=iGetTime, 5=vDragonCrystalId,
+ * 6=uiCurDragonCrystalId, 7=bSmartMagicUnlock, 8=iButtonSkin.
+ */
+const HERO_SKIN_FIELDS = Object.freeze([
+  { name: "iId", tag: 0, column: "i_id", type: "int", default: null },
+  { name: "iLimitTime", tag: 1, column: "i_limit_time", type: "int", default: 0 },
+  { name: "iSource", tag: 2, column: "i_source", type: "int", default: 0 },
+  { name: "iLimitTimeMagicChess", tag: 3, column: "i_limit_time_magic_chess", type: "int", default: 0 },
+  { name: "iGetTime", tag: 4, column: "i_get_time", type: "int", default: 0 },
+  { name: "vDragonCrystalId", tag: 5, column: "v_dragon_crystal_id", type: "json", default: "[]" },
+  { name: "uiCurDragonCrystalId", tag: 6, column: "ui_cur_dragon_crystal_id", type: "int", default: 0 },
+  { name: "bSmartMagicUnlock", tag: 7, column: "b_smart_magic_unlock", type: "int", default: 0 },
+  { name: "iButtonSkin", tag: 8, column: "i_button_skin", type: "int", default: 0 },
+]);
+const HERO_SKIN_COLUMNS = HERO_SKIN_FIELDS.map((d) => d.column).join(", ");
+const HERO_SKIN_PLACEHOLDERS = HERO_SKIN_FIELDS.map(() => "?").join(", ");
+const HERO_SKIN_UPDATE_SET = HERO_SKIN_FIELDS.slice(1)
+  .map((d) => `${d.column} = excluded.${d.column}`)
+  .join(", ");
+
+function heroSkinSqlType(def) {
+  return def.type === "json" ? "TEXT" : "INTEGER";
+}
+
+/** Default SQL: angka apa adanya, string JSON dikutip dengan aman. */
+function heroSkinDefaultSql(def) {
+  const value = def.default === null ? 0 : def.default;
+  return typeof value === "number"
+    ? String(value)
+    : `'${String(value).replace(/'/g, "''")}'`;
+}
+
+for (const table of ["cmd_hero_skin", "skin_get_list"]) {
+  AUTH_DB.exec(
+    `CREATE TABLE IF NOT EXISTS ${table} (
+  i_account_id INTEGER NOT NULL,
+  ${HERO_SKIN_FIELDS.map(
+    (d) =>
+      `${d.column} ${heroSkinSqlType(d)} NOT NULL` +
+      (d.default === null ? "" : ` DEFAULT ${heroSkinDefaultSql(d)}`),
+  ).join(",\n  ")},
+  PRIMARY KEY (i_account_id, i_id)
+);`,
+  );
+  const cols = AUTH_DB.prepare(`PRAGMA table_info(${table})`).all();
+  for (const def of HERO_SKIN_FIELDS) {
+    if (cols.some((c) => c.name === def.column)) continue;
+    AUTH_DB.exec(
+      `ALTER TABLE ${table} ADD COLUMN ${def.column} ${heroSkinSqlType(def)} NOT NULL DEFAULT ${heroSkinDefaultSql(def)};`,
+    );
+  }
+}
+
+/** Baris DB -> objek CmdHeroSkin (nama field dump.cs). */
+function heroSkinFromRow(row) {
+  const out = { iId: Number(row.i_id) };
+  for (const def of HERO_SKIN_FIELDS.slice(1)) {
+    if (def.type === "json") {
+      let arr = [];
+      try {
+        arr = JSON.parse(row[def.column] || "[]");
+      } catch (_) {}
+      out[def.name] = Array.isArray(arr) ? arr.map(Number) : [];
+    } else {
+      out[def.name] = Number(row[def.column] || 0);
+    }
+  }
+  return out;
+}
+
+function getCmdHeroSkin(accountId) {
+  const id = Number(accountId);
+  if (!Number.isFinite(id) || id <= 0) return [];
+  return AUTH_DB.prepare(
+    `SELECT * FROM cmd_hero_skin WHERE i_account_id = ? ORDER BY i_id ASC`,
+  )
+    .all(id)
+    .map(heroSkinFromRow);
+}
+
+/** Tabel hasil query skin, dipakai saat membangun vSkinList. */
+function getSkinGetList(accountId) {
+  const id = Number(accountId);
+  if (!Number.isFinite(id) || id <= 0) return [];
+  return AUTH_DB.prepare(
+    `SELECT * FROM skin_get_list WHERE i_account_id = ? ORDER BY i_id ASC`,
+  )
+    .all(id)
+    .map(heroSkinFromRow);
+}
+
+function upsertCmdHeroSkin(accountId, rows) {
+  const id = Number(accountId);
+  if (!Number.isFinite(id) || id <= 0 || !Array.isArray(rows)) return 0;
+  const stmt = AUTH_DB.prepare(
+    `INSERT INTO cmd_hero_skin (i_account_id, ${HERO_SKIN_COLUMNS})
+     VALUES (?, ${HERO_SKIN_PLACEHOLDERS})
+     ON CONFLICT(i_account_id, i_id) DO UPDATE SET ${HERO_SKIN_UPDATE_SET}`,
+  );
+  let count = 0;
+  for (const input of rows) {
+    const skinId = Number(input.iId !== undefined ? input.iId : input[0]);
+    if (!Number.isInteger(skinId) || skinId <= 0) continue;
+    const values = HERO_SKIN_FIELDS.map((def) => {
+      const raw =
+        input[def.name] !== undefined
+          ? input[def.name]
+          : input[def.tag] !== undefined
+            ? input[def.tag]
+            : def.default;
+      if (def.type === "json") {
+        return Array.isArray(raw) ? JSON.stringify(raw.map(Number)) : String(raw || "[]");
+      }
+      return Number(raw) || 0;
+    });
+    stmt.run(id, ...values);
+    count++;
+  }
+  return count;
+}
+
+function refreshSkinGetList(accountId) {
+  const id = Number(accountId);
+  if (!Number.isFinite(id) || id <= 0) return [];
+  AUTH_DB.prepare("DELETE FROM skin_get_list WHERE i_account_id = ?").run(id);
+  AUTH_DB.prepare(
+    `INSERT INTO skin_get_list (i_account_id, ${HERO_SKIN_COLUMNS})
+     SELECT ?, ${HERO_SKIN_COLUMNS} FROM cmd_hero_skin
+     WHERE i_account_id = ? ORDER BY i_id ASC`,
+  ).run(id, id);
+  return getSkinGetList(id);
+}
+
+/** Skin default untuk setiap akun: hanya 1189. */
+const DEFAULT_OWNED_SKINS = Object.freeze([1189]);
+
+function seedDefaultSkins(accountId) {
+  const id = Number(accountId);
+  if (!Number.isFinite(id) || id <= 0) return [];
+  const existing = new Set(getCmdHeroSkin(id).map((r) => r.iId));
+  const missing = DEFAULT_OWNED_SKINS.filter((skin) => !existing.has(skin)).map(
+    (skin) => ({ iId: skin, iSource: 1 }),
+  );
+  if (missing.length) upsertCmdHeroSkin(id, missing);
+  return refreshSkinGetList(id);
 }
 
 /** Ubah baris database (snake_case) menjadi objek akun (camelCase). */
@@ -1432,8 +1564,13 @@ module.exports = {
   upsertCmdHeroData,
   refreshHeroGetList,
   ensureHeroDataForAccount,
-  seedCmdHeroDataFromCapture,
   setHeroCurrentSkin,
+  HERO_SKIN_FIELDS,
+  getCmdHeroSkin,
+  getSkinGetList,
+  upsertCmdHeroSkin,
+  refreshSkinGetList,
+  seedDefaultSkins,
   buildLoginGetBulletinSC,
   buildLoginCheckUpgradeSC,
   buildNetConnectSC,

@@ -48,8 +48,10 @@ const {
   HERO_DATA_FIELDS,
   getHeroGetList,
   ensureHeroDataForAccount,
-  seedCmdHeroDataFromCapture,
   setHeroCurrentSkin,
+  HERO_SKIN_FIELDS,
+  getSkinGetList,
+  seedDefaultSkins,
   buildLoginGetBulletinSC,
   buildLoginCheckUpgradeSC,
   buildNetConnectSC,
@@ -219,9 +221,6 @@ function resolveRequestAccountId(raw, sock) {
   if (sock) sock.mlAccountId = id;
   return id;
 }
-
-/** Skin hero 18 (Layla) yang sedang dipakai; diubah oleh Cmd_Item_Set_CurSkin_CS. */
-let CURRENT_SKIN_LAYLA = 1188;
 
 /**
  * Override identitas hanya untuk paket yang dilayani lokal (replay). Mode relay
@@ -912,6 +911,8 @@ function patchCmdHeroGetListBody(bodyBuf, accountId) {
   const root = nodes.find((n) => n.type === sdp.T.STRUCT);
   if (!root) throw new Error("root struct tidak ditemukan");
 
+  // DB adalah satu-satunya sumber kebenaran: daftar lama dari capture dibuang
+  // seluruhnya, lalu dibangun ulang dari tabel hasil query.
   let heroListField = root.fields.find(
     (f) => f.tag === 0 && f.type === sdp.T.LIST,
   );
@@ -919,31 +920,14 @@ function patchCmdHeroGetListBody(bodyBuf, accountId) {
     heroListField = { tag: 0, type: sdp.T.LIST, items: [] };
     root.fields.push(heroListField);
   }
-  const heroList = heroListField.items;
-  const findHero = (id) =>
-    heroList.find((it) => {
-      const f = it.fields && it.fields.find((x) => x.tag === 0);
-      return f && Number(f.v) === id;
-    });
-
-  const owned = getHeroGetList(accountId);
-  for (const row of owned) {
-    let hero = findHero(row.iHeroId);
-    if (!hero) {
-      hero = sdp.node.struct(0, [sdp.node.int(0, row.iHeroId)]);
-      heroList.push(hero);
-    }
+  heroListField.items = getHeroGetList(accountId).map((row) => {
+    const fields = [sdp.node.int(0, row.iHeroId)];
     for (const def of HERO_DATA_FIELDS.slice(1)) {
       const value = Number(row[def.name] || 0);
-      const idx = hero.fields.findIndex((f) => f.tag === def.tag);
-      if (value > 0) {
-        setSdpInt(hero.fields, def.tag, value);
-      } else if (idx >= 0) {
-        hero.fields.splice(idx, 1); // default 0 = belum diset
-      }
+      if (value > 0) fields.push(sdp.node.int(def.tag, value));
     }
-    hero.fields.sort((a, b) => a.tag - b.tag);
-  }
+    return sdp.node.struct(0, fields);
+  });
 
   let skinListField = root.fields.find(
     (f) => f.tag === 1 && f.type === sdp.T.LIST,
@@ -952,22 +936,26 @@ function patchCmdHeroGetListBody(bodyBuf, accountId) {
     skinListField = { tag: 1, type: sdp.T.LIST, items: [] };
     root.fields.push(skinListField);
   }
-  const skinList = skinListField.items;
-  for (const skinId of [1188, 1189, 102512]) {
-    const owned = skinList.some((it) => {
-      const f = it.fields && it.fields.find((x) => x.tag === 0);
-      return f && Number(f.v) === skinId;
-    });
-    if (!owned) {
-      skinList.push(
-        sdp.node.struct(0, [
-          sdp.node.int(0, skinId),
-          sdp.node.int(1, 0),
-          sdp.node.int(2, 1),
-        ]),
-      );
+  skinListField.items = getSkinGetList(accountId).map((row) => {
+    const fields = [sdp.node.int(0, row.iId)];
+    for (const def of HERO_SKIN_FIELDS.slice(1)) {
+      if (def.type === "json") {
+        if (row[def.name].length) {
+          fields.push(
+            sdp.node.list(
+              def.tag,
+              row[def.name].map((id) => sdp.node.int(0, id)),
+            ),
+          );
+        }
+        continue;
+      }
+      const value = Number(row[def.name] || 0);
+      if (value > 0) fields.push(sdp.node.int(def.tag, value));
     }
-  }
+    return sdp.node.struct(0, fields);
+  });
+
   root.fields.sort((a, b) => a.tag - b.tag);
   return sdp.encode(nodes);
 }
@@ -1322,7 +1310,6 @@ function handleZoneOpcode(sock, opcode, seq, label, raw) {
     if (heroId) {
       const accId = resolveRequestAccountId(raw, sock);
       setHeroCurrentSkin(accId, heroId, skinId);
-      if (heroId === 18 && skinId) CURRENT_SKIN_LAYLA = skinId;
     }
     const scBody = sdp.buildBody([
       sdp.node.int(0, heroId),
@@ -1571,10 +1558,11 @@ function handleZoneOpcode(sock, opcode, seq, label, raw) {
     try {
       const heroAccountId = resolveRequestAccountId(raw, sock);
       const owned = ensureHeroDataForAccount(heroAccountId);
+      const skins = seedDefaultSkins(heroAccountId);
       body = patchCmdHeroGetListBody(body || entry.body, heroAccountId);
       const layla = owned.find((r) => r.iHeroId === 18);
       console.log(
-        `[${label}] patch Cmd_Hero_GetList_SC dari DB account=${heroAccountId} heroes=${owned.length} hero18.skin=${layla ? layla.iCurrentSkin : 0} + skin 1188/1189`,
+        `[${label}] patch Cmd_Hero_GetList_SC dari DB account=${heroAccountId} heroes=${owned.length} hero18.skin=${layla ? layla.iCurrentSkin : 0} skins=${skins.length} (default 1189)`,
       );
     } catch (e) {
       console.log(`[${label}] PATCH GAGAL Cmd_Hero_GetList_SC: ${e.message}`);
@@ -1869,40 +1857,6 @@ async function main() {
     console.log(
       "[SERVER] MODE=replay -> replay dari capture lokal (tanpa override diamond/level)",
     );
-  }
-
-  if (MODE === "emulate") {
-    try {
-      const entry = REPLAY_CACHE.get("0x7000a251");
-      if (entry) {
-        const root = sdp.decode(entry.body).find(
-          (n) => n.type === sdp.T.STRUCT,
-        );
-        const list =
-          root &&
-          root.fields.find(
-            (f) => f.tag === 0 && f.type === sdp.T.LIST,
-          );
-        const heroes = ((list && list.items) || [])
-          .map((it) => {
-            const row = {};
-            for (const f of (it && it.fields) || []) {
-              if (Number.isInteger(f.tag) && f.tag >= 0 && f.tag <= 7) {
-                row[f.tag] = Number(f.v || 0);
-              }
-            }
-            return row;
-          })
-          .filter((r) => Number(r[0]) > 0);
-        const result = seedCmdHeroDataFromCapture(1000000, heroes);
-        const layla = result.find((r) => r.iHeroId === 18);
-        console.log(
-          `[SERVER] seed cmd_hero_data akun 1000000: ${heroes.length} hero dari capture, hero_get_list=${result.length} (hero18.skin=${layla ? layla.iCurrentSkin : 0})`,
-        );
-      }
-    } catch (e) {
-      console.log(`[SERVER] GAGAL seed cmd_hero_data: ${e.message}`);
-    }
   }
 
   for (const port of AUTH_PORTS) await listen(port, "AUTH", makeAuthHandler);
