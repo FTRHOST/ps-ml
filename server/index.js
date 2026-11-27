@@ -1032,6 +1032,18 @@ function handleAuthOpcode(sock, opcode, seq, style, label, raw) {
 }
 
 function handleZoneOpcode(sock, opcode, seq, label, raw) {
+  if (
+    process.env.DEBUG_CS === "1" &&
+    [0x7000ff4e, 0x7000fb4e, 0x7000934f, 0x7000954e].includes(opcode >>> 0)
+  ) {
+    const dbgBody = extractCsBody(raw);
+    console.log(
+      `[${label}] DEBUG CS ${hex32(opcode)} body=${
+        dbgBody ? dbgBody.toString("hex") : "null"
+      }`,
+    );
+  }
+
   if (opcode === 0x7000914e) {
     // Balasan resmi berisi sSessionKey base64 68 karakter. Utamakan frame asli
     // dari capture supaya kunci sesi yang dipakai klien benar-benar valid.
@@ -1056,6 +1068,32 @@ function handleZoneOpcode(sock, opcode, seq, label, raw) {
   // Handler emulasi: opcode yang tidak bisa dijawab hanya dengan replay cache.
   // Semua balasan memakai header/ID pesan dari request yang sesuai.
   // -------------------------------------------------------------------------
+  if (EMULATE && opcode === 0x7000fb4e) {
+    // Cmd_Role_CheckNameDirty_CS -> SC. Tanpa balasan ini UI Create Character
+    // menunggu validasi nama dan tombol Confirm tidak pernah mengirim role baru.
+    const csBody = extractCsBody(raw);
+    let name = "";
+    try {
+      const nodes = csBody ? sdp.decode(csBody) : [];
+      const root = nodes.find((n) => n.type === sdp.T.STRUCT);
+      const field = (root ? root.fields : nodes).find(
+        (n) => n.tag === 0 && n.type === sdp.T.STRING,
+      );
+      if (field) name = field.raw.toString("utf8");
+    } catch (_) {}
+    // Klien memakai sOriWord dari SC sebagai nama saat mengirim role baru.
+    // Kirim identitas lokal supaya karakter dibuat dengan nama petwir0x.
+    const scBody = sdp.buildBody([
+      sdp.node.int(0, 0), // bHitDirty = false
+      sdp.node.str(10, ROLE_NAME),
+    ]);
+    console.log(
+      `[${label}] Cmd_Role_CheckNameDirty_CS -> SC (request=${name || "-"} -> ${ROLE_NAME} clean)`,
+    );
+    sendZoneReply(sock, 0x7000fc4e, seq, raw, scBody);
+    return;
+  }
+
   if (EMULATE && opcode === 0x7000fa55) {
     // Cmd_Shop_BuyItem_CS -> Cmd_Shop_BuyItem_SC (rspcode 0 = sukses).
     const csBody = extractCsBody(raw);
