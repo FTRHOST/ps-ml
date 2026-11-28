@@ -8,30 +8,37 @@
 #   byte-nya apa adanya ke server lokal. Setara dengan menulis /etc/hosts, tetapi
 #   port zone memakai IP sehingga hosts tidak cukup.
 #
-# Dua jalur yang didukung:
+# Tiga jalur yang didukung:
 #   on   : app -> iptables REDIRECT 127.0.0.1 -> adb reverse -> PC (butuh USB/adb)
 #   wifi : app -> iptables DNAT <IP-PC> -> PC lewat LAN (tanpa adb reverse)
+#   vps  : app + klien hotspot -> DNAT <IP-VPS> lewat uplink device
 #
-# Port UDP ping ikut dialihkan di mode wifi dan mode on. Karena adb reverse
-# hanya meneruskan TCP, UDP tetap memakai DNAT LAN ke IP PC.
+# Port UDP ping ikut dialihkan di semua mode. Karena adb reverse hanya
+# meneruskan TCP, UDP selalu memakai DNAT.
 #
-# Pada mode wifi, bila device sedang menjadi hotspot, aturan PREROUTING juga
+# Pada mode wifi/vps, bila device sedang menjadi hotspot, aturan PREROUTING juga
 # dipasang supaya perangkat lain yang tersambung ke hotspot tersebut otomatis
-# memakai server lokal (tanpa root di perangkat klien).
+# memakai server tujuan (tanpa root di perangkat klien). Mode vps memakai
+# MASQUERADE di interface uplink (wlan0/rmnet) agar balasan VPS kembali lewat
+# device.
 #
 # Pemakaian:
 #   ./tools/redirect.sh on [IP-PC]           # USB/adb + DNAT UDP ping
 #   ./tools/redirect.sh wifi                 # LAN, IP PC dideteksi otomatis
 #   ./tools/redirect.sh wifi 192.168.1.50    # LAN, IP PC eksplisit
+#   ./tools/redirect.sh vps <IP-VPS>         # server di VPS + klien hotspot
 #   ./tools/redirect.sh off                  # matikan semua pengalihan
 #   ./tools/redirect.sh status
 #
 # Catatan:
 #   - Device yang menjalankan skrip ini harus root (memasang iptables).
-#   - Server PC harus mendengarkan 0.0.0.0 (default server/index.js) dan
-#     firewall PC mengizinkan port 30021/30071/30101/10003.
-#   - Aturan bertahan sampai reboot. Setelah reboot/IP PC berubah, jalankan
-#     ulang `./tools/redirect.sh wifi`.
+#   - Server PC/VPS harus mendengarkan 0.0.0.0 (default server/index.js) dan
+#     firewall mengizinkan port 30021/30071/30101/10003/30103 (TCP) serta
+#     30101/10003/30103/7000/8000/9000 (UDP).
+#   - Mode vps memakai IP publik VPS sebagai SERVER_IP/ZONE_ADVERTISE_IP;
+#     jangan pakai IP privat VPS untuk alamat yang diiklankan ke klien.
+#   - Aturan bertahan sampai reboot. Setelah reboot/IP berubah, jalankan
+#     ulang mode yang dipakai.
 set -euo pipefail
 
 PORTS=(30021 30071 30101 10003 30103)   # Auth + Zone; beda versi klien beda port (incl. 161.202.206.34:30103)
@@ -85,7 +92,7 @@ detect_route_if() {
 # DNAT UDP ping ke IP PC. Dipakai oleh mode wifi DAN on: adb reverse hanya
 # meneruskan TCP, jadi UDP tidak bisa ikut jalur 127.0.0.1.
 apply_udp_dnat_rules() {
-  local host_ip="$1" ap_if="$2" route_if="$3" cmd="" p
+  local host_ip="$1" ap_if="$2" route_if="$3" hairpin="${4:-1}" cmd="" p
   for p in "${UDP_PORTS[@]}"; do
     cmd+="iptables -t nat -A OUTPUT -p udp --dport ${p} -j DNAT --to-destination ${host_ip}:${p} -m comment --comment ${COMMENT}; "
   done
@@ -97,11 +104,13 @@ apply_udp_dnat_rules() {
     for p in "${UDP_PORTS[@]}"; do
       cmd+="iptables -t nat -A POSTROUTING -o ${masq_if} -p udp -d ${host_ip} --dport ${p} -j MASQUERADE -m comment --comment ${COMMENT}; "
     done
-    # Klien hotspot lain dan PC berada di ap0 yang sama. tetherctrl_FORWARD
-    # hanya meneruskan wlan0<->ap0 lalu menjatuhkan sisanya ke DROP, jadi
-    # paket hairpin ap0->ap0 (klien -> PC) harus diterima lebih dulu.
-    cmd+="iptables -I tetherctrl_FORWARD 1 -i ${ap_if} -o ${ap_if} -d ${host_ip} -j ACCEPT -m comment --comment ${COMMENT}; "
-    cmd+="iptables -I tetherctrl_FORWARD 1 -i ${ap_if} -o ${ap_if} -s ${host_ip} -j ACCEPT -m comment --comment ${COMMENT}; "
+    if [ "${hairpin}" = "1" ]; then
+      # Klien hotspot lain dan PC berada di ap0 yang sama. tetherctrl_FORWARD
+      # hanya meneruskan wlan0<->ap0 lalu menjatuhkan sisanya ke DROP, jadi
+      # paket hairpin ap0->ap0 (klien -> PC) harus diterima lebih dulu.
+      cmd+="iptables -I tetherctrl_FORWARD 1 -i ${ap_if} -o ${ap_if} -d ${host_ip} -j ACCEPT -m comment --comment ${COMMENT}; "
+      cmd+="iptables -I tetherctrl_FORWARD 1 -i ${ap_if} -o ${ap_if} -s ${host_ip} -j ACCEPT -m comment --comment ${COMMENT}; "
+    fi
   fi
   cmd="${cmd%; }"
   $ROOTCMD "$cmd" >/dev/null
@@ -130,6 +139,31 @@ apply_wifi_rules() {
   cmd="${cmd%; }"
   $ROOTCMD "$cmd" >/dev/null
   apply_udp_dnat_rules "${host_ip}" "${ap_if}" "${route_if}"
+}
+
+# Mode VPS: DNAT ke IP publik VPS, bukan ke PC. Tidak ada hairpin ap0->ap0,
+# jadi aturan tetherctrl_FORWARD tambahan tidak dipasang. MASQUERADE di uplink
+# membuat balasan VPS kembali ke device lalu diteruskan ke klien hotspot.
+apply_vps_rules() {
+  local host_ip="$1" ap_if="$2" route_if="$3" cmd="" p
+  if [ -z "${route_if}" ]; then
+    echo "[!] uplink tidak terdeteksi untuk ${host_ip}; cek ip route di device" >&2
+  fi
+  for p in "${PORTS[@]}"; do
+    cmd+="iptables -t nat -A OUTPUT -p tcp --dport ${p} -j DNAT --to-destination ${host_ip}:${p} -m comment --comment ${COMMENT}; "
+  done
+  if [ -n "${ap_if}" ]; then
+    for p in "${PORTS[@]}"; do
+      cmd+="iptables -t nat -A PREROUTING -i ${ap_if} -p tcp --dport ${p} -j DNAT --to-destination ${host_ip}:${p} -m comment --comment ${COMMENT}; "
+    done
+    local masq_if="${route_if:-$ap_if}"
+    for p in "${PORTS[@]}"; do
+      cmd+="iptables -t nat -A POSTROUTING -o ${masq_if} -p tcp -d ${host_ip} --dport ${p} -j MASQUERADE -m comment --comment ${COMMENT}; "
+    done
+  fi
+  cmd="${cmd%; }"
+  $ROOTCMD "$cmd" >/dev/null
+  apply_udp_dnat_rules "${host_ip}" "${ap_if}" "${route_if}" 0
 }
 
 apply_usb_rules() {
@@ -204,6 +238,37 @@ case "${1:-}" in
       echo "[i] tidak ada interface hotspot; hanya perangkat ini yang diarahkan."
     fi
     ;;
+  vps)
+    HOST_IP="${2:-}"
+    if [ -z "$HOST_IP" ]; then
+      echo "[!] IP VPS wajib. Pemakaian: $0 vps <IP-VPS>" >&2
+      exit 2
+    fi
+    echo "[*] server VPS: ${HOST_IP}"
+
+    # Jangan biarkan adb reverse mengalahkan DNAT ke VPS.
+    for p in "${PORTS[@]}"; do
+      adb reverse --remove "tcp:${p}" >/dev/null 2>&1 || true
+    done
+
+    AP_IF="$(detect_ap_if)"
+    ROUTE_IF="$(detect_route_if "${HOST_IP}")"
+    flush_rules
+    apply_vps_rules "${HOST_IP}" "${AP_IF}" "${ROUTE_IF}"
+
+    for p in "${PORTS[@]}"; do
+      echo "[+] TCP ${p} -> ${HOST_IP}:${p} (VPS)"
+    done
+    for p in "${UDP_PORTS[@]}"; do
+      echo "[+] UDP ${p} -> ${HOST_IP}:${p} (VPS, echo ping)"
+    done
+    if [ -n "$AP_IF" ]; then
+      echo "[*] hotspot terdeteksi: ${AP_IF}; klien hotspot ikut diarahkan"
+      echo "    jalur ke VPS lewat: ${ROUTE_IF:-${AP_IF}}"
+    else
+      echo "[i] tidak ada interface hotspot; hanya perangkat ini yang diarahkan."
+    fi
+    ;;
   off)
     flush_rules
     for p in "${PORTS[@]}"; do
@@ -220,7 +285,7 @@ case "${1:-}" in
     echo "== IP PC (terdeteksi) =="; detect_host_ip || true
     ;;
   *)
-    echo "pemakaian: $0 on [IP-PC]|wifi [IP-PC]|off|status" >&2
+    echo "pemakaian: $0 on [IP-PC]|wifi [IP-PC]|vps <IP-VPS>|off|status" >&2
     exit 2
     ;;
 esac
