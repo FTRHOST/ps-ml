@@ -449,11 +449,13 @@ const PING_ECHO_DELAY_MS = Math.max(
 /**
  * Penundaan balasan `Cmd_Net_Echo_CS` (`0x7000954e`). Beberapa build klien
  * memakai RTT TCP echo ini untuk angka ping lobby. Default 200 ms; set 0 untuk
- * balas langsung/mengikuti latensi lokal.
+ * balas langsung/mengikuti latensi lokal. Alias singkat: `DELAY`.
  */
 const PING_TCP_ECHO_DELAY_MS = Math.max(
   0,
-  Number(process.env.PING_TCP_ECHO_DELAY_MS ?? 200) || 0,
+  Number(
+    process.env.PING_TCP_ECHO_DELAY_MS ?? process.env.DELAY ?? 200,
+  ) || 0,
 );
 const NET_ECHO_SC = 0x7000964e;
 
