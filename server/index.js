@@ -2375,11 +2375,12 @@ function makeAuthHandler(sock, label) {
         const parsed = inner ? probeParseInner(inner) : null;
         if (!parsed) {
           // Non-zstd ATAU zstd valid tapi tanpa header 0x46 -> Cold Start probe.
+          // -45 sudah dikirim sebagai greeting saat connect, jadi probe lama
+          // hanya dicatat dan diabaikan (tidak mengulang penolakan).
           console.log(
-            `[${label}] Cold Start probe (${total}B, inner=${inner ? inner.toString("hex") : "non-zstd"}) -> tolak -45 (Session Expired)`,
+            `[${label}] Cold Start probe (${total}B, inner=${inner ? inner.toString("hex") : "non-zstd"}) -> diabaikan (-45 sudah dikirim saat connect)`,
           );
-          sock.write(buildColdStartReject(0x01), () => sock.end());
-          return;
+          continue;
         }
         console.log(
           `[${label}] RECV ${hex32(parsed.opcode)} seq=${parsed.seq} len=${total} (zstd)`,
@@ -2544,7 +2545,7 @@ async function main() {
     `   Ping TCP  : echo ${hex32(NET_ECHO_SC)} delay=${PING_TCP_ECHO_DELAY_MS}ms`,
   );
   console.log(
-    `   ColdStart : ${COLDSTART_GREET ? "Greeting -45 saat connect Auth + probe 0x1000" : "Handled (-45 via probe 0x1000 saja)"}`,
+    `   ColdStart : ${COLDSTART_GREET ? "Greeting -45 saat connect Auth (probe 0x1000 diabaikan)" : "-45 nonaktif"}`,
   );
   console.log("   CDN Mode  : Official Moonton CDN");
   console.log("====================================================");
